@@ -1,13 +1,15 @@
 import os
 import re
 import time
-import sqlite3
-from contextlib import closing
+import threading
+import schedule
 from dotenv import load_dotenv
 from slack_bolt import App
+import datetime
+import sqlite3
+from contextlib import closing
 
 load_dotenv()
-# Initialize the Bolt app with your credentials
 
 app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
@@ -32,16 +34,13 @@ def record_debit(user_id, amount):
         with closing(conn):
             create_debits_table(conn)
             c = conn.cursor()
-            # Check if user_id exists in the database
             c.execute("SELECT * FROM debits WHERE user_id=?", (user_id,))
             existing_record = c.fetchone()
             if existing_record:
-                # If user_id exists, update the amount
 
                 new_amount = existing_record[1] + amount
                 c.execute("UPDATE debits SET amount=? WHERE user_id=?", (new_amount, user_id))
             else:
-                # If user_id doesn't exist, insert a new record
                 c.execute("INSERT INTO debits (user_id, amount) VALUES (?, ?)", (user_id, amount))
             conn.commit()
     except sqlite3.OperationalError as e:
@@ -106,12 +105,11 @@ def parse_input(input_string):
     match = re.match(regex_pattern, input_string)
     if match:
         user_id = match.group(1)
-        amount = int(match.group(2))  # Convert amount to integer
+        amount = int(match.group(2))
     else:
         user_id = None
         amount = None
 
-    # Return extracted values
     return user_id, amount
 
 
@@ -141,16 +139,8 @@ def handle_app_mention(ack, body, say):
     say(blocks=block, text="Intro message")
 
 
-@app.shortcut("debit_shortcut")
-def handle_shortcut(ack, shortcut, client):
-    ack()
-    user_id = shortcut["user"]["id"]
-    # Handle the shortcut and tag the user
-    # ...
-
-
 @app.command("/debit")
-def handle_debit_command(ack, body, client, say):
+def handle_debit_command(ack, body, say):
     ack()
     user_id = body["user_id"]
     text = body["text"]
@@ -208,5 +198,61 @@ def set_report_schedule_day(day, time_hour):
         print(f"Error setting report schedule day: {e}")
 
 
+def send_weekly_report(client, channel_id):
+    user_points = get_user_points()
+    if user_points:
+        response_text = "Weekly User Points Report:\n"
+        for user_id, total in user_points:
+            response_text += f"<@{user_id}>: {total}\n"
+        try:
+            client.chat_postMessage(channel=channel_id, text=response_text)
+        except Exception as e:
+            print(f"Error sending weekly report: {e}")
+    else:
+        print("No user points found in the database")
+
+
+def get_report_schedule_day():
+    conn = get_db_connection()
+    try:
+        with closing(conn):
+            c = conn.cursor()
+            c.execute("SELECT day, time FROM report_schedule")
+            day_time = c.fetchone()
+            if day_time:
+                return day_time
+            else:
+                return None
+    except sqlite3.Error as e:
+        print(f"Error retrieving report schedule day: {e}")
+        return None
+
+
+def run_scheduler(scheduler_client, scheduler_channel_id):
+    def send_report_job(report_client, report_channel_id):
+        day_time = get_report_schedule_day()
+        if day_time:
+            day, time_hour = day_time
+            if day == datetime.datetime.today().strftime('%A') and datetime.datetime.now().hour == time_hour:
+                send_weekly_report(report_client, report_channel_id)
+
+    schedule.every().hour.do(send_report_job, scheduler_client, scheduler_channel_id)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+
 if __name__ == "__main__":
+    client = app.client
+
+    channel_name = "general"
+    response = client.conversations_list()
+    for channel in response["channels"]:
+        if channel["name"] == channel_name:
+            channel_id = channel["id"]
+            break
+
+    scheduler_thread = threading.Thread(target=run_scheduler, args=(client, channel_id))
+    scheduler_thread.start()
     app.start(port=int(os.environ.get("PORT", 3000)))
