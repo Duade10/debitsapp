@@ -1,11 +1,10 @@
 import os
 import re
-import datetime
+import time
 import sqlite3
 from contextlib import closing
 from dotenv import load_dotenv
 from slack_bolt import App
-import psycopg2
 
 load_dotenv()
 # Initialize the Bolt app with your credentials
@@ -116,8 +115,9 @@ def parse_input(input_string):
     return user_id, amount
 
 
-# SCHEDULING
-def create_report_schedule(conn):
+# SCHEDULING FUNCTIONS
+
+def create_report_schedule_table(conn):
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS report_schedule (day TEXT, time INTEGER)''')
     conn.commit()
@@ -125,7 +125,6 @@ def create_report_schedule(conn):
 
 @app.message("hello")
 def message_hello(message, say):
-    # say() sends a message to the channel where the event was triggered
     say(f"Hey there <@{message['user']}>!")
 
 
@@ -175,34 +174,38 @@ def handle_points_command(ack, respond):
         respond("No user points found in the database.")
 
 
-# def get_db_connection():
-#     print('db')
-#     try:
-#         conn = psycopg2.connect(
-#             user="postgres",
-#             password="12345",
-#             host="127.0.0.1",
-#             port="5432",
-#             database="debits",
-#         )
-#         return conn
-#     except (Exception, psycopg2.Error) as error:
-#         print("Error connecting to PostgreSQL database:", error)
-#
-#
-# def record_debit(user_id, amount, reason):
-#     print('debit')
-#     conn = get_db_connection()
-#     try:
-#         with conn:
-#             with conn.cursor() as cur:
-#                 cur.execute("INSERT INTO debits (user_id, amount, reason) VALUES (%s, %s, %s)",
-#                             (user_id, amount, reason))
-#     except (Exception, psycopg2.Error) as error:
-#         print("Error recording debit:", error)
-#     finally:
-#         if conn:
-#             conn.close()
+# SCHEDULING COMMAND
+@app.command("/set-report-day")
+def handle_set_report_day(ack, body, respond):
+    ack()
+    text = body["text"].strip().lower()
+    try:
+        day, time_hour = text.split()
+        time_hour = int(time_hour)
+        valid_days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        if day in valid_days:
+            if 0 <= time_hour < 24:
+                set_report_schedule_day(day.capitalize(), time_hour)
+                respond(f"Weekly report day set to {day.capitalize()} at {time_hour:02d}:00.")
+            else:
+                respond("Invalid time. Please enter a valid hour (0-23).")
+        else:
+            respond("Invalid day. Please enter a valid day of the week.")
+    except ValueError:
+        respond("Invalid input. Please provide the day and time in the format 'day hour'.")
+
+
+def set_report_schedule_day(day, time_hour):
+    conn = get_db_connection()
+    try:
+        with closing(conn):
+            create_report_schedule_table(conn)
+            c = conn.cursor()
+            c.execute("DELETE FROM report_schedule")  # Clear existing day
+            c.execute("INSERT INTO report_schedule (day, time) VALUES (?, ?)", (day, time_hour))
+            conn.commit()
+    except sqlite3.Error as e:
+        print(f"Error setting report schedule day: {e}")
 
 
 if __name__ == "__main__":
