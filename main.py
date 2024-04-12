@@ -75,6 +75,23 @@ def get_app_mention_block():
                 "text": "*2️⃣ You can use the `/points` * command to view a leaderboard of users and their "
                         "accumulated debit points"
             }
+        },
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "For Scheduling",
+                "emoji": True
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*1️⃣ Use the `/set-report-day` command*. Type `/set-record` command followed by `the day of "
+                        "the week` and the `hour` of the day you want to get the reports weekly. For example: `/debit"
+                        " friday 18`"
+            }
         }
     ]
 
