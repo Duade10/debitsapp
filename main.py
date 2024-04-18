@@ -156,9 +156,11 @@ def handle_app_mention(ack, body, say):
     say(blocks=block, text="Intro message")
 
 
-@app.command("/debit")
-def handle_debit_command(ack, body, say):
+@app.command("/add")
+def handle_add_point_command(ack, body, say):
     ack()
+    print(body)
+    print(body["timestamp"])
     user_id = body["user_id"]
     text = body["text"]
     target_user_id, amount = parse_input(text)
@@ -166,6 +168,26 @@ def handle_debit_command(ack, body, say):
         # ...
         record_debit(target_user_id, int(amount))
         say(text=f"{amount} points have been added to {target_user_id}")
+
+
+def get_permalink(channel, timestamp):
+    client = app.client
+    response = client.chat_getPermalink(
+        channel=channel,
+        message_ts=timestamp
+    )
+    return response["permalink"]
+
+
+@app.shortcut("add_a_point")
+def handle_add_a_point_shortcut(ack, body, say):
+    ack()
+    print(body)
+    print(body["message"]["ts"])
+    timestamp = body["message"]["ts"]
+    channel_id = body["channel"]["id"]
+
+    print(get_permalink(channel_id, timestamp))
 
 
 @app.command("/points")
