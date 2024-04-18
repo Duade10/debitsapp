@@ -1,13 +1,16 @@
+import datetime
 import os
 import re
-import time
+import sqlite3
 import threading
+import time
+from contextlib import closing
+
 import schedule
 from dotenv import load_dotenv
 from slack_bolt import App
-import datetime
-import sqlite3
-from contextlib import closing
+
+from includes import custom_blocks
 
 load_dotenv()
 
@@ -24,11 +27,11 @@ def get_db_connection():
 def create_debits_table(conn):
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS debits
-                 (user_id TEXT, amount INTEGER)''')
+                 (user_id TEXT, amount INTEGER, link TEXT)''')
     conn.commit()
 
 
-def record_debit(user_id, amount):
+def record_debit(user_id, amount, link=None):
     conn = get_db_connection()
     try:
         with closing(conn):
@@ -37,11 +40,16 @@ def record_debit(user_id, amount):
             c.execute("SELECT * FROM debits WHERE user_id=?", (user_id,))
             existing_record = c.fetchone()
             if existing_record:
-
                 new_amount = existing_record[1] + amount
-                c.execute("UPDATE debits SET amount=? WHERE user_id=?", (new_amount, user_id))
+                if link:
+                    c.execute("UPDATE debits SET amount=?, link=? WHERE user_id=?", (new_amount, link, user_id))
+                else:
+                    c.execute("UPDATE debits SET amount=? WHERE user_id=?", (new_amount, user_id))
             else:
-                c.execute("INSERT INTO debits (user_id, amount) VALUES (?, ?)", (user_id, amount))
+                if link:
+                    c.execute("INSERT INTO debits (user_id, amount, link) VALUES (?, ?, ?)", (user_id, amount, link))
+                else:
+                    c.execute("INSERT INTO debits (user_id, amount) VALUES (?, ?)", (user_id, amount))
             conn.commit()
     except sqlite3.OperationalError as e:
         if "database is locked" in str(e):
@@ -50,50 +58,53 @@ def record_debit(user_id, amount):
             raise e
 
 
-def get_app_mention_block():
-    return [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "Hello there! 👋 I'm Debits Bot, here to help you keep track of debit points within your "
-                        "team. With me, you can easily assign and record debit points for various reasons."
-            }
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "*1️⃣ Use the `/debit` command*. Type `/debit` command followed by `@username` and the amount "
-                        "of points. For example: `/debit @john.doe 1`"
-            }
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "*2️⃣ You can use the `/points` * command to view a leaderboard of users and their "
-                        "accumulated debit points"
-            }
-        },
-        {
-            "type": "header",
-            "text": {
-                "type": "plain_text",
-                "text": "For Scheduling",
-                "emoji": True
-            }
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "*1️⃣ Use the `/set-report-day` command*. Type `/set-record` command followed by `the day of "
-                        "the week` and the `hour` of the day you want to get the reports weekly. For example: `/debit"
-                        " friday 18`"
-            }
-        }
-    ]
+def remove_debit(user_id, amount, link=None):
+    conn = get_db_connection()
+    try:
+        with closing(conn):
+            create_debits_table(conn)
+            c = conn.cursor()
+            c.execute("SELECT * FROM debits WHERE user_id=?", (user_id,))
+            existing_record = c.fetchone()
+            if existing_record:
+                current_amount = existing_record[1]
+                new_amount = current_amount - amount
+                if new_amount > 0:
+                    if link:
+                        c.execute("UPDATE debits SET amount=?, link=? WHERE user_id=?", (new_amount, link, user_id))
+                    else:
+                        c.execute("UPDATE debits SET amount=? WHERE user_id=?", (new_amount, user_id))
+                else:
+                    c.execute("DELETE FROM debits WHERE user_id=?", (user_id,))
+            conn.commit()
+    except sqlite3.OperationalError as e:
+        if "database is locked" in str(e):
+            print("Database is locked, retrying later...")
+        else:
+            raise e
+
+
+def get_user_data(user_id):
+    conn = get_db_connection()
+    try:
+        with closing(conn):
+            create_debits_table(conn)
+            c = conn.cursor()
+            c.execute("SELECT * FROM debits WHERE user_id=?", (user_id,))
+            user_data = c.fetchone()
+            if user_data:
+                return {
+                    "user_id": user_data[0],
+                    "amount": user_data[1],
+                    "link": user_data[2]
+                }
+            else:
+                return None
+    except sqlite3.OperationalError as e:
+        if "database is locked" in str(e):
+            print("Database is locked, retrying later...")
+        else:
+            raise e
 
 
 def get_user_points():
@@ -102,16 +113,17 @@ def get_user_points():
         with closing(conn):
             c = conn.cursor()
             c.execute("""
-                SELECT user_id, SUM(amount) AS total
+                SELECT user_id, SUM(amount) AS total_points
                 FROM debits
                 GROUP BY user_id
-                ORDER BY total DESC
+                ORDER BY total_points DESC
             """)
             user_points = c.fetchall()
             return user_points
     except sqlite3.Error as e:
         print(f"Error retrieving user points: {e}")
         return []
+
 
 
 def parse_input(input_string):
@@ -152,22 +164,29 @@ def handle_message_events(body, logger):
 def handle_app_mention(ack, body, say):
     ack()
     user = body["event"]["user"]
-    block = get_app_mention_block()
+    block = custom_blocks.get_app_mention_block()
     say(blocks=block, text="Intro message")
 
 
 @app.command("/add")
 def handle_add_point_command(ack, body, say):
     ack()
-    print(body)
-    print(body["timestamp"])
-    user_id = body["user_id"]
     text = body["text"]
     target_user_id, amount = parse_input(text)
     if target_user_id:
-        # ...
         record_debit(target_user_id, int(amount))
         say(text=f"{amount} points have been added to {target_user_id}")
+
+
+@app.command("/delete")
+def handle_remove_point_command(ack, body, say):
+    ack()
+    print(body)
+    text = body["text"]
+    target_user_id, amount = parse_input(text)
+    if target_user_id:
+        remove_debit(target_user_id, int(amount))
+        say(text=f"{amount} points have been removed from {target_user_id}")
 
 
 def get_permalink(channel, timestamp):
@@ -179,28 +198,78 @@ def get_permalink(channel, timestamp):
     return response["permalink"]
 
 
-@app.shortcut("add_a_point")
-def handle_add_a_point_shortcut(ack, body, say):
+@app.shortcut("add_point")
+def handle_add_a_point_shortcut(ack, body):
     ack()
-    print(body)
-    print(body["message"]["ts"])
+
     timestamp = body["message"]["ts"]
     channel_id = body["channel"]["id"]
+    trigger_id = body["trigger_id"]
+    link = get_permalink(channel_id, timestamp)
+    blocks = custom_blocks.points_modal(link, request_type="add_modal_save")
+    client.views_open(trigger_id=trigger_id, view=blocks)
 
-    print(get_permalink(channel_id, timestamp))
+
+@app.shortcut("remove_point")
+def handle_remove_point_shortcut(ack, body):
+    ack()
+
+    timestamp = body["message"]["ts"]
+    channel_id = body["channel"]["id"]
+    trigger_id = body["trigger_id"]
+    link = get_permalink(channel_id, timestamp)
+    blocks = custom_blocks.points_modal(link, request_type="remove_modal_save")
+    client.views_open(trigger_id=trigger_id, view=blocks)
+
+
+@app.view("remove_modal_save")
+def handle_remove_submission_events(ack, body, say):
+    ack()
+    print(body)
+    selected_user = body["view"]["state"]["values"]["user"]["multi_users_select-action"]["selected_users"][0]
+    userprofile = client.users_profile_get(user=selected_user)
+    email = userprofile["profile"]["email"]
+    username = email.split("@")[0]
+    points = body["view"]["state"]["values"]["points"]["plain_text_input-action"]["value"]
+    timestamp_link = body["view"]["state"]["values"]["timestamp"]["timestamp_input"]["value"]
+    remove_debit(username, int(points), timestamp_link)
+
+
+@app.view("add_modal_save")
+def handle_add_submission_events(ack, body, say):
+    ack()
+    print(body)
+    selected_user = body["view"]["state"]["values"]["user"]["multi_users_select-action"]["selected_users"][0]
+    userprofile = client.users_profile_get(user=selected_user)
+    email = userprofile["profile"]["email"]
+    username = email.split("@")[0]
+    points = body["view"]["state"]["values"]["points"]["plain_text_input-action"]["value"]
+    timestamp_link = body["view"]["state"]["values"]["timestamp"]["timestamp_input"]["value"]
+    record_debit(username, int(points), timestamp_link)
 
 
 @app.command("/points")
-def handle_points_command(ack, respond):
+def handle_points_command(ack, body, respond):
     ack()
-    user_points = get_user_points()
-    if user_points:
-        response_text = "User Points:\n"
-        for user_id, total in user_points:
-            response_text += f"<@{user_id}>: {total}\n"
+    text = body["text"]
+    if text:
+        user_id = text.replace("@", "")
+        user_data = get_user_data(user_id)
+        user_id = user_data.get("user_id")
+        amount = user_data.get("amount")
+        link = user_data.get("link")
+        response_text = f"<@{user_id}>: {amount} - {link}"
         respond(response_text)
+
     else:
-        respond("No user points found in the database.")
+        user_points = get_user_points()
+        if user_points:
+            response_text = "User Points:\n"
+            for user_id, total in user_points:
+                response_text += f"<@{user_id}>: {total}\n"
+            respond(response_text)
+        else:
+            respond("No user points found in the database.")
 
 
 # SCHEDULING COMMAND
