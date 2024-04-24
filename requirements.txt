@@ -4,4 +4,4 @@ requests==2.31.0; python_version >= '3.7'
 slack-bolt==1.18.1; python_version >= '3.6'
 slack-sdk==3.27.1; python_version >= '3.6'
 slackeventsapi==3.0.1; python_version >= '3.6'
-
+schedule~=1.2.1
