@@ -9,24 +9,35 @@ def get_app_mention_block():
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "Hello there! 👋 I'm Debits Bot, here to help you keep track of debit points within your "
-                        "team. With me, you can easily assign and record debit points for various reasons."
+                "text": "Hello there! 👋 I'm Debits Bot, here to help you keep track of debit points within your team. With me, you can easily assign and record debit points for various reasons."
             }
         },
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*1️⃣ Use the `/debit` command*. Type `/debit` command followed by `@username` and the amount "
-                        "of points. For example: `/debit @john.doe 1`"
+                "text": "*1️⃣ Use the `/add` command*. Type `/add` command followed by `@username` and the amount of points. For example: `/add @john.doe 1` "
             }
         },
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*2️⃣ You can use the `/points` * command to view a leaderboard of users and their "
-                        "accumulated debit points"
+                "text": "*2️⃣ Use the `/delete` command*. Type `/delete` command followed by `@username` and the amount of points. For example: `/delete @john.doe 1` to remove points "
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*3️⃣ Use the `add_point` or `remove_point` shortcuts*. Click `add_point` or `remove_point` in the context menu and fill the form."
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*4️⃣ You can use the `/points` * command to view a leaderboard of users and their accumulated debit points"
             }
         },
         {
@@ -34,16 +45,14 @@ def get_app_mention_block():
             "text": {
                 "type": "plain_text",
                 "text": "For Scheduling",
-                "emoji": True
+                "emoji": true
             }
         },
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*1️⃣ Use the `/set-report-day` command*. Type `/set-record` command followed by `the day of "
-                        "the week` and the `hour` of the day you want to get the reports weekly. For example: `/debit"
-                        " friday 18`"
+                "text": "*1️⃣ Use the `/set-report-day` command*. Type `/set-record` command followed by `the day of the week` and the `hour` of the day you want to get the reports weekly. For example: `/debit friday 18` "
             }
         }
     ]
