@@ -94,6 +94,20 @@ def remove_debit(user_id, amount, link=None):
             raise e
 
 
+def is_workspace_admin(user_id):
+    try:
+        user_info = app.client.users_info(user=user_id)
+        is_admin = user_info["user"]["is_admin"]
+        is_owner = user_info["user"]["is_owner"]
+        is_primary_owner = user_info["user"]["is_primary_owner"]
+
+        # Check if the user is a workspace admin, owner, or primary owner
+        return is_admin or is_owner or is_primary_owner
+    except Exception as e:
+        print(f"Error checking workspace admin status: {e}")
+        return False
+
+
 def reset_debits_table():
     conn = get_db_connection()
     try:
@@ -237,6 +251,8 @@ def handle_app_mention(ack, body, say):
 @app.command("/add")
 def handle_add_point_command(ack, body, say):
     ack()
+    user_id = body["user_id"]
+    print(is_workspace_admin(user_id))
     text = body["text"]
     target_user_id, amount = parse_input(text)
     if target_user_id:
@@ -350,6 +366,55 @@ def handle_points_command(ack, client, body):
 
 
 # SCHEDULING COMMAND
+
+def set_reset_mode(mode):
+    conn = get_db_connection()
+    try:
+        with closing(conn):
+            create_reset_mode_table(conn)
+            c = conn.cursor()
+            c.execute("DELETE FROM reset_mode")  # Clear existing mode
+            c.execute("INSERT INTO reset_mode (mode) VALUES (?)", (mode,))
+            conn.commit()
+    except sqlite3.Error as e:
+        print(f"Error setting reset mode: {e}")
+
+
+def create_reset_mode_table(conn):
+    c = conn.cursor()
+    c.execute("""CREATE TABLE IF NOT EXISTS reset_mode (
+                    id INTEGER PRIMARY KEY,
+                    mode TEXT NOT NULL
+                )""")
+
+
+@app.command("/set-reset-mode")
+def handle_set_reset_mode(ack, body, respond):
+    ack()
+    mode = body["text"].strip().lower()
+    if mode in ["automatic", "manual"]:
+        set_reset_mode(mode)
+        respond(f"Reset mode set to {mode}.")
+    else:
+        respond("Invalid mode. Please enter 'automatic' or 'manual'.")
+
+
+@app.command("/reset")
+def handle_reset_command(ack, body):
+    ack()
+    trigger_id = body["trigger_id"]
+    blocks = custom_blocks.reset_db_modal_blocks()
+    client = app.client
+    client.views_open(trigger_id=trigger_id, view=blocks)
+
+
+@app.view("reset")
+def handle_reset_view(ack, client):
+    ack()
+    reset_debits_table()
+    post_to_general(client, "The database was successfully reset.")
+
+
 @app.command("/set-report-day")
 def handle_set_report_day(ack, body, respond):
     ack()
@@ -368,23 +433,6 @@ def handle_set_report_day(ack, body, respond):
             respond("Invalid day. Please enter a valid day of the week.")
     except ValueError:
         respond("Invalid input. Please provide the day and time in the format 'day hour'.")
-
-
-@app.command("/reset")
-def handle_reset_command(ack, body):
-    ack()
-    print(body)
-    trigger_id = body["trigger_id"]
-    blocks = custom_blocks.reset_db_modal_blocks()
-    client = app.client
-    client.views_open(trigger_id=trigger_id, view=blocks)
-
-
-@app.view("reset")
-def handle_reset_view(ack, client):
-    ack()
-    reset_debits_table()
-    post_to_general(client, "The database has been reset successfully")
 
 
 def set_report_schedule_day(day, time_hour):
@@ -429,31 +477,50 @@ def get_report_schedule_day():
         return None
 
 
+def get_reset_mode():
+    conn = get_db_connection()
+    try:
+        with closing(conn):
+            c = conn.cursor()
+            c.execute("SELECT mode FROM reset_mode")
+            mode = c.fetchone()
+            if mode:
+                return mode[0]
+            else:
+                return None
+    except sqlite3.Error as e:
+        print(f"Error retrieving reset mode: {e}")
+        return None
+
+
 def run_scheduler():
     def send_report_job():
+        print("Checking Report Job")
         day_time = get_report_schedule_day()
         if day_time:
             day, time_hour = day_time
             if day == datetime.datetime.today().strftime('%A') and datetime.datetime.now().hour == time_hour:
                 send_weekly_report()
 
+    def check_reset_mode():
+        reset_mode = get_reset_mode()
+        print(reset_mode)
+        print(datetime.datetime.now().day == 1)
+        if reset_mode == "automatic" and datetime.datetime.now().day == 1:
+            reset_debits_table()
+
     schedule.every().hour.do(send_report_job)
+    schedule.every(2).hours.do(check_reset_mode)
 
     while True:
         schedule.run_pending()
-        time.sleep(60)
+        time.sleep(0.5)
 
 
 if __name__ == "__main__":
     client = app.client
 
-    channel_name = "general"
-    response = client.conversations_list()
-    for channel in response["channels"]:
-        if channel["name"] == channel_name:
-            channel_id = channel["id"]
-            break
-
     scheduler_thread = threading.Thread(target=run_scheduler)
     scheduler_thread.start()
+
     app.start(port=int(os.environ.get("PORT", 3000)))
