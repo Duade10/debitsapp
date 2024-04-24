@@ -344,6 +344,7 @@ def handle_add_submission_events(ack, body, say):
 @app.command("/points")
 def handle_points_command(ack, client, body):
     ack()
+    print(body)
     text = body["text"]
     if text:
         user_id = text.replace("@", "")
