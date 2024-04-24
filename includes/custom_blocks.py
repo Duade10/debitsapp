@@ -1,3 +1,8 @@
+import datetime
+
+true = True
+
+
 def get_app_mention_block():
     return [
         {
@@ -42,8 +47,6 @@ def get_app_mention_block():
             }
         }
     ]
-
-
 
 
 def points_modal(permalink, request_type, true=True):
@@ -117,3 +120,149 @@ def points_modal(permalink, request_type, true=True):
             }
         ]
     }
+
+
+def user_points_blocks(user_points):
+    now = datetime.datetime.now()
+    date_time_str = now.strftime("%A, %B %d, %Y \n %I:%M %p")
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Here are all the users and points as of *\n {date_time_str}"
+            },
+            "accessory": {
+                "type": "image",
+                "image_url": "https://api.slack.com/img/blocks/bkb_template_images/notifications.png",
+                "alt_text": "calendar thumbnail"
+            }
+        },
+        {
+            "type": "divider"
+        }
+    ]
+
+    for user_id, total, link in user_points:
+        section_block = {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Point(s): {total}*\nUser: <@{user_id}>"
+            }
+        }
+        blocks.append(section_block)
+
+    return blocks
+
+
+def add_points_block(pr_amount, amount, cur_amount, user_id, link=None, true=True):
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"{amount} Points have been added to <@{user_id}>"
+            }
+        },
+        {
+            "type": "divider"
+        },
+        {
+            "type": "section",
+            "fields": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Previous Point(s):* {pr_amount} \n*Current Point(s) :* {cur_amount}"
+                }
+            ]
+        }]
+    if link:
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": true,
+                        "text": "Thread"
+                    },
+                    "style": "primary",
+                    "url": link
+                }
+            ]
+        })
+    return blocks
+
+
+def remove_points_block(pr_amount, amount, cur_amount, user_id, link=None, true=True):
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"{amount} Points have been removed from <@{user_id}>"
+            }
+        },
+        {
+            "type": "divider"
+        },
+        {
+            "type": "section",
+            "fields": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Previous Point(s):* {pr_amount} \n*Current Point(s) :* {cur_amount}"
+                }
+            ]
+        }]
+    if link:
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": true,
+                        "text": "Thread"
+                    },
+                    "style": "primary",
+                    "url": link
+                }
+            ]
+        })
+    return blocks
+
+
+def reset_db_modal_blocks():
+    blocks = {
+        "type": "modal",
+        "callback_id": "reset",
+        "title": {
+            "type": "plain_text",
+            "text": "My App",
+            "emoji": true
+        },
+        "submit": {
+            "type": "plain_text",
+            "text": "Proceed",
+            "emoji": true
+        },
+        "close": {
+            "type": "plain_text",
+            "text": "Cancel",
+            "emoji": true
+        },
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "Are you sure you want to reset the database?"
+                }
+            }
+        ]
+    }
+    return blocks

@@ -40,17 +40,22 @@ def record_debit(user_id, amount, link=None):
             c.execute("SELECT * FROM debits WHERE user_id=?", (user_id,))
             existing_record = c.fetchone()
             if existing_record:
-                new_amount = existing_record[1] + amount
+                previous_amount = existing_record[1]
+                new_amount = previous_amount + amount
                 if link:
                     c.execute("UPDATE debits SET amount=?, link=? WHERE user_id=?", (new_amount, link, user_id))
                 else:
                     c.execute("UPDATE debits SET amount=? WHERE user_id=?", (new_amount, user_id))
+                current_amount = new_amount
             else:
+                previous_amount = 0
+                current_amount = amount
                 if link:
                     c.execute("INSERT INTO debits (user_id, amount, link) VALUES (?, ?, ?)", (user_id, amount, link))
                 else:
                     c.execute("INSERT INTO debits (user_id, amount) VALUES (?, ?)", (user_id, amount))
             conn.commit()
+            return previous_amount, amount, current_amount
     except sqlite3.OperationalError as e:
         if "database is locked" in str(e):
             print("Database is locked, retrying later...")
@@ -67,21 +72,43 @@ def remove_debit(user_id, amount, link=None):
             c.execute("SELECT * FROM debits WHERE user_id=?", (user_id,))
             existing_record = c.fetchone()
             if existing_record:
-                current_amount = existing_record[1]
-                new_amount = current_amount - amount
+                previous_amount = existing_record[1]
+                new_amount = previous_amount - amount
                 if new_amount > 0:
                     if link:
                         c.execute("UPDATE debits SET amount=?, link=? WHERE user_id=?", (new_amount, link, user_id))
                     else:
                         c.execute("UPDATE debits SET amount=? WHERE user_id=?", (new_amount, user_id))
+                    current_amount = new_amount
                 else:
                     c.execute("DELETE FROM debits WHERE user_id=?", (user_id,))
-            conn.commit()
+                    current_amount = 0
+                conn.commit()
+                return previous_amount, amount, current_amount
+            else:
+                return None, None, None
     except sqlite3.OperationalError as e:
         if "database is locked" in str(e):
             print("Database is locked, retrying later...")
         else:
             raise e
+
+
+def reset_debits_table():
+    conn = get_db_connection()
+    try:
+        with closing(conn):
+            c = conn.cursor()
+            c.execute("DROP TABLE IF EXISTS debits")
+            c.execute("""CREATE TABLE debits (
+                          user_id TEXT PRIMARY KEY,
+                          amount INTEGER,
+                          link TEXT
+                      )""")
+            conn.commit()
+            print("Debits table reset successfully.")
+    except sqlite3.Error as e:
+        print(f"Error resetting debits table: {e}")
 
 
 def get_user_data(user_id):
@@ -113,7 +140,7 @@ def get_user_points():
         with closing(conn):
             c = conn.cursor()
             c.execute("""
-                SELECT user_id, SUM(amount) AS total_points
+                SELECT user_id, SUM(amount) AS total_points, MAX(link) AS link
                 FROM debits
                 GROUP BY user_id
                 ORDER BY total_points DESC
@@ -123,7 +150,6 @@ def get_user_points():
     except sqlite3.Error as e:
         print(f"Error retrieving user points: {e}")
         return []
-
 
 
 def parse_input(input_string):
@@ -140,6 +166,46 @@ def parse_input(input_string):
         amount = None
 
     return user_id, amount
+
+
+def post_to_general(client, text, blocks=None):
+    try:
+        if blocks:
+            result = client.chat_postMessage(
+                channel="debits-general",
+                text=text,
+                blocks=blocks
+            )
+            print(result)
+        else:
+            result = client.chat_postMessage(
+                channel="debits-general",
+                text=text
+            )
+            print(result)
+
+    except Exception as e:
+        print(f"Error posting message: {e}")
+
+
+def post_to_channel(client, channel_id, text, blocks=None):
+    try:
+        if blocks:
+            result = client.chat_postMessage(
+                channel=channel_id,
+                text=text,
+                blocks=blocks
+            )
+            print(result)
+        else:
+            result = client.chat_postMessage(
+                channel="debits-general",
+                text=text
+            )
+            print(result)
+
+    except Exception as e:
+        print(f"Error posting message: {e}")
 
 
 # SCHEDULING FUNCTIONS
@@ -174,8 +240,9 @@ def handle_add_point_command(ack, body, say):
     text = body["text"]
     target_user_id, amount = parse_input(text)
     if target_user_id:
-        record_debit(target_user_id, int(amount))
-        say(text=f"{amount} points have been added to {target_user_id}")
+        previous_amount, amount, current_amount = record_debit(target_user_id, int(amount))
+        blocks = custom_blocks.add_points_block(previous_amount, amount, current_amount, target_user_id)
+        say(text=f"{amount} points have been added to {target_user_id}", blocks=blocks)
 
 
 @app.command("/delete")
@@ -185,8 +252,9 @@ def handle_remove_point_command(ack, body, say):
     text = body["text"]
     target_user_id, amount = parse_input(text)
     if target_user_id:
-        remove_debit(target_user_id, int(amount))
-        say(text=f"{amount} points have been removed from {target_user_id}")
+        previous_amount, amount, current_amount = remove_debit(target_user_id, int(amount))
+        blocks = custom_blocks.remove_points_block(previous_amount, amount, current_amount, target_user_id)
+        say(text=f"{amount} points have been removed from {target_user_id}", blocks=blocks)
 
 
 def get_permalink(channel, timestamp):
@@ -223,16 +291,20 @@ def handle_remove_point_shortcut(ack, body):
 
 
 @app.view("remove_modal_save")
-def handle_remove_submission_events(ack, body, say):
+def handle_remove_submission_events(ack, body, client):
     ack()
-    print(body)
     selected_user = body["view"]["state"]["values"]["user"]["multi_users_select-action"]["selected_users"][0]
     userprofile = client.users_profile_get(user=selected_user)
     email = userprofile["profile"]["email"]
     username = email.split("@")[0]
     points = body["view"]["state"]["values"]["points"]["plain_text_input-action"]["value"]
     timestamp_link = body["view"]["state"]["values"]["timestamp"]["timestamp_input"]["value"]
-    remove_debit(username, int(points), timestamp_link)
+    previous_amount, amount, current_amount = remove_debit(username, int(points), timestamp_link)
+    blocks = custom_blocks.remove_points_block(previous_amount, amount, current_amount, username, link=timestamp_link)
+    ts_link = timestamp_link.split('archives/')[1]
+    channel_id = ts_link.split('/')[0]
+    text = f"{amount} points have been removed from {username}"
+    post_to_channel(client, channel_id, text, blocks)
 
 
 @app.view("add_modal_save")
@@ -245,11 +317,16 @@ def handle_add_submission_events(ack, body, say):
     username = email.split("@")[0]
     points = body["view"]["state"]["values"]["points"]["plain_text_input-action"]["value"]
     timestamp_link = body["view"]["state"]["values"]["timestamp"]["timestamp_input"]["value"]
-    record_debit(username, int(points), timestamp_link)
+    previous_amount, amount, current_amount = record_debit(username, int(points), timestamp_link)
+    blocks = custom_blocks.add_points_block(previous_amount, amount, current_amount, username, link=timestamp_link)
+    ts_link = timestamp_link.split('archives/')[1]
+    channel_id = ts_link.split('/')[0]
+    text = f"{amount} points have been added to {username}"
+    post_to_channel(client, channel_id, text, blocks)
 
 
 @app.command("/points")
-def handle_points_command(ack, body, respond):
+def handle_points_command(ack, client, body):
     ack()
     text = body["text"]
     if text:
@@ -259,17 +336,17 @@ def handle_points_command(ack, body, respond):
         amount = user_data.get("amount")
         link = user_data.get("link")
         response_text = f"<@{user_id}>: {amount} - {link}"
-        respond(response_text)
+        post_to_general(client, response_text)
 
     else:
         user_points = get_user_points()
         if user_points:
-            response_text = "User Points:\n"
-            for user_id, total in user_points:
-                response_text += f"<@{user_id}>: {total}\n"
-            respond(response_text)
+            print(user_points)
+            blocks = custom_blocks.user_points_blocks(user_points)
+            post_to_general(client, "Debit Points", blocks)
+
         else:
-            respond("No user points found in the database.")
+            post_to_general(client, "No user points found in the database.")
 
 
 # SCHEDULING COMMAND
@@ -293,6 +370,23 @@ def handle_set_report_day(ack, body, respond):
         respond("Invalid input. Please provide the day and time in the format 'day hour'.")
 
 
+@app.command("/reset")
+def handle_reset_command(ack, body):
+    ack()
+    print(body)
+    trigger_id = body["trigger_id"]
+    blocks = custom_blocks.reset_db_modal_blocks()
+    client = app.client
+    client.views_open(trigger_id=trigger_id, view=blocks)
+
+
+@app.view("reset")
+def handle_reset_view(ack, client):
+    ack()
+    reset_debits_table()
+    post_to_general(client, "The database has been reset successfully")
+
+
 def set_report_schedule_day(day, time_hour):
     conn = get_db_connection()
     try:
@@ -306,14 +400,13 @@ def set_report_schedule_day(day, time_hour):
         print(f"Error setting report schedule day: {e}")
 
 
-def send_weekly_report(client, channel_id):
+def send_weekly_report():
+    client = app.client
     user_points = get_user_points()
     if user_points:
-        response_text = "Weekly User Points Report:\n"
-        for user_id, total in user_points:
-            response_text += f"<@{user_id}>: {total}\n"
         try:
-            client.chat_postMessage(channel=channel_id, text=response_text)
+            blocks = custom_blocks.user_points_blocks(user_points)
+            post_to_general(client, "Weekly Debit Points Update", blocks)
         except Exception as e:
             print(f"Error sending weekly report: {e}")
     else:
@@ -336,15 +429,15 @@ def get_report_schedule_day():
         return None
 
 
-def run_scheduler(scheduler_client, scheduler_channel_id):
-    def send_report_job(report_client, report_channel_id):
+def run_scheduler():
+    def send_report_job():
         day_time = get_report_schedule_day()
         if day_time:
             day, time_hour = day_time
             if day == datetime.datetime.today().strftime('%A') and datetime.datetime.now().hour == time_hour:
-                send_weekly_report(report_client, report_channel_id)
+                send_weekly_report()
 
-    schedule.every().hour.do(send_report_job, scheduler_client, scheduler_channel_id)
+    schedule.every().hour.do(send_report_job)
 
     while True:
         schedule.run_pending()
@@ -361,6 +454,6 @@ if __name__ == "__main__":
             channel_id = channel["id"]
             break
 
-    scheduler_thread = threading.Thread(target=run_scheduler, args=(client, channel_id))
+    scheduler_thread = threading.Thread(target=run_scheduler)
     scheduler_thread.start()
     app.start(port=int(os.environ.get("PORT", 3000)))
