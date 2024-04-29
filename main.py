@@ -241,6 +241,9 @@ def handle_add_point_command(ack, body, say):
     print(is_workspace_admin(user_id))
     text = body["text"]
     target_user_id, amount = utils.parse_input(text)
+    print(target_user_id)
+    who = client.users_profile_get(user=target_user_id)
+    print(who)
     if target_user_id:
         previous_amount, amount, current_amount = record_debit(target_user_id, int(amount))
         blocks = custom_blocks.add_points_block(previous_amount, amount, current_amount, target_user_id)
@@ -296,35 +299,32 @@ def handle_remove_point_shortcut(ack, body):
 def handle_remove_submission_events(ack, body, client):
     ack()
     selected_user = body["view"]["state"]["values"]["user"]["multi_users_select-action"]["selected_users"][0]
-    userprofile = client.users_profile_get(user=selected_user)
-    email = userprofile["profile"]["email"]
-    username = email.split("@")[0]
+    userprofile = client.users_info(user=selected_user)
+    username = userprofile["user"]["name"]
     points = body["view"]["state"]["values"]["points"]["plain_text_input-action"]["value"]
     timestamp_link = body["view"]["state"]["values"]["timestamp"]["timestamp_input"]["value"]
     previous_amount, amount, current_amount = remove_debit(username, int(points), timestamp_link)
     blocks = custom_blocks.remove_points_block(previous_amount, amount, current_amount, username, link=timestamp_link)
     ts_link = timestamp_link.split('archives/')[1]
     channel_id = ts_link.split('/')[0]
-    text = f"{amount} points have been removed from {username}"
+    text = f"{amount} points have been removed from <@{username}>"
     post_to_channel(client, channel_id, text, blocks)
 
 
 @app.view("add_modal_save")
 def handle_add_submission_events(ack, body, say):
     ack()
-    print(body)
+
     selected_user = body["view"]["state"]["values"]["user"]["multi_users_select-action"]["selected_users"][0]
-    userprofile = client.users_profile_get(user=selected_user)
-    print(userprofile)
-    email = userprofile["profile"]["email"]
-    username = email.split("@")[0]
+    userprofile = client.users_info(user=selected_user)
+    username = userprofile["user"]["name"]
     points = body["view"]["state"]["values"]["points"]["plain_text_input-action"]["value"]
     timestamp_link = body["view"]["state"]["values"]["timestamp"]["timestamp_input"]["value"]
     previous_amount, amount, current_amount = record_debit(username, int(points), timestamp_link)
     blocks = custom_blocks.add_points_block(previous_amount, amount, current_amount, username, link=timestamp_link)
     ts_link = timestamp_link.split('archives/')[1]
     channel_id = ts_link.split('/')[0]
-    text = f"{amount} points have been added to {username}"
+    text = f"{amount} points have been added to <@{username}>"
     post_to_channel(client, channel_id, text, blocks)
 
 
