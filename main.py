@@ -329,6 +329,7 @@ def handle_add_submission_events(ack, body, say):
     print(body)
     selected_user = body["view"]["state"]["values"]["user"]["multi_users_select-action"]["selected_users"][0]
     userprofile = client.users_profile_get(user=selected_user)
+    print(userprofile)
     email = userprofile["profile"]["email"]
     username = email.split("@")[0]
     points = body["view"]["state"]["values"]["points"]["plain_text_input-action"]["value"]
@@ -344,7 +345,7 @@ def handle_add_submission_events(ack, body, say):
 @app.shortcut("all_points")
 def handle_all_points_shortcut(ack, body):
     ack()
-    
+
     user_points = get_user_points()
     if user_points:
         print(user_points)
