@@ -341,6 +341,19 @@ def handle_add_submission_events(ack, body, say):
     post_to_channel(client, channel_id, text, blocks)
 
 
+@app.shortcut("all_points")
+def handle_all_points_shortcut(ack, body):
+    ack()
+    
+    user_points = get_user_points()
+    if user_points:
+        print(user_points)
+        blocks = custom_blocks.user_points_blocks(user_points)
+        post_to_general(client, "Debit Points", blocks)
+    else:
+        post_to_general(client, "No user points found in the database.")
+
+
 @app.command("/points")
 def handle_points_command(ack, client, body):
     ack()
