@@ -9,6 +9,7 @@ from contextlib import closing
 import schedule
 from dotenv import load_dotenv
 from slack_bolt import App
+from includes import utils
 
 from includes import custom_blocks
 
@@ -167,22 +168,6 @@ def get_user_points():
         return []
 
 
-def parse_input(input_string):
-    # User ID and Amount Extraction Regex
-    regex_pattern = r'^@(\w+)\s(\d+)'
-
-    # Extract User ID and Amount
-    match = re.match(regex_pattern, input_string)
-    if match:
-        user_id = match.group(1)
-        amount = int(match.group(2))
-    else:
-        user_id = None
-        amount = None
-
-    return user_id, amount
-
-
 def post_to_general(client, text, blocks=None):
     try:
         if blocks:
@@ -255,9 +240,7 @@ def handle_add_point_command(ack, body, say):
     user_id = body["user_id"]
     print(is_workspace_admin(user_id))
     text = body["text"]
-    print(f"TEXT: {user_id}")
-    target_user_id, amount = parse_input(text)
-    print(f"Target User ID: {target_user_id}")
+    target_user_id, amount = utils.parse_input(text)
     if target_user_id:
         previous_amount, amount, current_amount = record_debit(target_user_id, int(amount))
         blocks = custom_blocks.add_points_block(previous_amount, amount, current_amount, target_user_id)
@@ -269,7 +252,7 @@ def handle_remove_point_command(ack, body, say):
     ack()
     print(body)
     text = body["text"]
-    target_user_id, amount = parse_input(text)
+    target_user_id, amount = utils.parse_input(text)
     if target_user_id:
         previous_amount, amount, current_amount = remove_debit(target_user_id, int(amount))
         blocks = custom_blocks.remove_points_block(previous_amount, amount, current_amount, target_user_id)
