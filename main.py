@@ -49,6 +49,7 @@ def record_debit(user_id, amount, link=None):
                 current_amount = new_amount
             else:
                 previous_amount = 0
+                print(user_id)
                 current_amount = amount
                 if link:
                     c.execute("INSERT INTO debits (user_id, amount, link) VALUES (?, ?, ?)", (user_id, amount, link))
