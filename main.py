@@ -255,7 +255,9 @@ def handle_add_point_command(ack, body, say):
     user_id = body["user_id"]
     print(is_workspace_admin(user_id))
     text = body["text"]
+    print(f"TEXT: {user_id}")
     target_user_id, amount = parse_input(text)
+    print(f"Target User ID: {target_user_id}")
     if target_user_id:
         previous_amount, amount, current_amount = record_debit(target_user_id, int(amount))
         blocks = custom_blocks.add_points_block(previous_amount, amount, current_amount, target_user_id)
