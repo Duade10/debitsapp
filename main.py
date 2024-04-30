@@ -1,6 +1,5 @@
 import datetime
 import os
-import re
 import sqlite3
 import threading
 import time
@@ -9,9 +8,9 @@ from contextlib import closing
 import schedule
 from dotenv import load_dotenv
 from slack_bolt import App
-from includes import utils
 
-from includes import custom_blocks
+from includes import custom_blocks, utils, db
+
 
 load_dotenv()
 
@@ -25,149 +24,6 @@ def get_db_connection():
     return sqlite3.connect("debits.db", check_same_thread=False)
 
 
-def create_debits_table(conn):
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS debits
-                 (user_id TEXT, amount INTEGER, link TEXT)''')
-    conn.commit()
-
-
-def record_debit(user_id, amount, link=None):
-    conn = get_db_connection()
-    try:
-        with closing(conn):
-            create_debits_table(conn)
-            c = conn.cursor()
-            c.execute("SELECT * FROM debits WHERE user_id=?", (user_id,))
-            existing_record = c.fetchone()
-            if existing_record:
-                previous_amount = existing_record[1]
-                new_amount = previous_amount + amount
-                if link:
-                    c.execute("UPDATE debits SET amount=?, link=? WHERE user_id=?", (new_amount, link, user_id))
-                else:
-                    c.execute("UPDATE debits SET amount=? WHERE user_id=?", (new_amount, user_id))
-                current_amount = new_amount
-            else:
-                previous_amount = 0
-                print(user_id)
-                current_amount = amount
-                if link:
-                    c.execute("INSERT INTO debits (user_id, amount, link) VALUES (?, ?, ?)", (user_id, amount, link))
-                else:
-                    c.execute("INSERT INTO debits (user_id, amount) VALUES (?, ?)", (user_id, amount))
-            conn.commit()
-            return previous_amount, amount, current_amount
-    except sqlite3.OperationalError as e:
-        if "database is locked" in str(e):
-            print("Database is locked, retrying later...")
-        else:
-            raise e
-
-
-def remove_debit(user_id, amount, link=None):
-    conn = get_db_connection()
-    try:
-        with closing(conn):
-            create_debits_table(conn)
-            c = conn.cursor()
-            c.execute("SELECT * FROM debits WHERE user_id=?", (user_id,))
-            existing_record = c.fetchone()
-            if existing_record:
-                previous_amount = existing_record[1]
-                new_amount = previous_amount - amount
-                if new_amount > 0:
-                    if link:
-                        c.execute("UPDATE debits SET amount=?, link=? WHERE user_id=?", (new_amount, link, user_id))
-                    else:
-                        c.execute("UPDATE debits SET amount=? WHERE user_id=?", (new_amount, user_id))
-                    current_amount = new_amount
-                else:
-                    c.execute("DELETE FROM debits WHERE user_id=?", (user_id,))
-                    current_amount = 0
-                conn.commit()
-                return previous_amount, amount, current_amount
-            else:
-                return None, None, None
-    except sqlite3.OperationalError as e:
-        if "database is locked" in str(e):
-            print("Database is locked, retrying later...")
-        else:
-            raise e
-
-
-def is_workspace_admin(user_id):
-    try:
-        user_info = app.client.users_info(user=user_id)
-        is_admin = user_info["user"]["is_admin"]
-        is_owner = user_info["user"]["is_owner"]
-        is_primary_owner = user_info["user"]["is_primary_owner"]
-
-        # Check if the user is a workspace admin, owner, or primary owner
-        return is_admin or is_owner or is_primary_owner
-    except Exception as e:
-        print(f"Error checking workspace admin status: {e}")
-        return False
-
-
-def reset_debits_table():
-    conn = get_db_connection()
-    try:
-        with closing(conn):
-            c = conn.cursor()
-            c.execute("DROP TABLE IF EXISTS debits")
-            c.execute("""CREATE TABLE debits (
-                          user_id TEXT PRIMARY KEY,
-                          amount INTEGER,
-                          link TEXT
-                      )""")
-            conn.commit()
-            print("Debits table reset successfully.")
-    except sqlite3.Error as e:
-        print(f"Error resetting debits table: {e}")
-
-
-def get_user_data(user_id):
-    conn = get_db_connection()
-    try:
-        with closing(conn):
-            create_debits_table(conn)
-            c = conn.cursor()
-            c.execute("SELECT * FROM debits WHERE user_id=?", (user_id,))
-            user_data = c.fetchone()
-            if user_data:
-                return {
-                    "user_id": user_data[0],
-                    "amount": user_data[1],
-                    "link": user_data[2]
-                }
-            else:
-                return None
-    except sqlite3.OperationalError as e:
-        if "database is locked" in str(e):
-            print("Database is locked, retrying later...")
-        else:
-            raise e
-
-
-def get_user_points():
-    conn = get_db_connection()
-    try:
-        with closing(conn):
-            c = conn.cursor()
-            c.execute("""
-                SELECT user_id, SUM(amount) AS total_points, MAX(link) AS link
-                FROM debits
-                GROUP BY user_id
-                ORDER BY total_points DESC
-            """)
-            user_points = c.fetchall()
-            return user_points
-    except sqlite3.Error as e:
-        print(f"Error retrieving user points: {e}")
-        return []
-
-
 def post_to_general(client, text, blocks=None):
     try:
         if blocks:
@@ -176,13 +32,11 @@ def post_to_general(client, text, blocks=None):
                 text=text,
                 blocks=blocks
             )
-            print(result)
         else:
             result = client.chat_postMessage(
                 channel="debits-general",
                 text=text
             )
-            print(result)
 
     except Exception as e:
         print(f"Error posting message: {e}")
@@ -196,30 +50,17 @@ def post_to_channel(client, channel_id, text, blocks=None):
                 text=text,
                 blocks=blocks
             )
-            print(result)
         else:
             result = client.chat_postMessage(
                 channel="debits-general",
                 text=text
             )
-            print(result)
 
     except Exception as e:
         print(f"Error posting message: {e}")
 
 
 # SCHEDULING FUNCTIONS
-
-def create_report_schedule_table(conn):
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS report_schedule (day TEXT, time INTEGER)''')
-    conn.commit()
-
-
-@app.message("hello")
-def message_hello(message, say):
-    say(f"Hey there <@{message['user']}>!")
-
 
 @app.event("message")
 def handle_message_events(body, logger):
@@ -229,6 +70,7 @@ def handle_message_events(body, logger):
 @app.event("app_mention")
 def handle_app_mention(ack, body, say):
     ack()
+
     user = body["event"]["user"]
     block = custom_blocks.get_app_mention_block()
     say(blocks=block, text="Intro message")
@@ -237,15 +79,11 @@ def handle_app_mention(ack, body, say):
 @app.command("/add")
 def handle_add_point_command(ack, body, say):
     ack()
-    user_id = body["user_id"]
-    print(is_workspace_admin(user_id))
+
     text = body["text"]
     target_user_id, amount = utils.parse_input(text)
-    print(target_user_id)
-    who = client.users_profile_get(user=target_user_id)
-    print(who)
     if target_user_id:
-        previous_amount, amount, current_amount = record_debit(target_user_id, int(amount))
+        previous_amount, amount, current_amount = db.record_debit(target_user_id, int(amount))
         blocks = custom_blocks.add_points_block(previous_amount, amount, current_amount, target_user_id)
         say(text=f"{amount} points have been added to {target_user_id}", blocks=blocks)
 
@@ -253,11 +91,11 @@ def handle_add_point_command(ack, body, say):
 @app.command("/delete")
 def handle_remove_point_command(ack, body, say):
     ack()
-    print(body)
+
     text = body["text"]
     target_user_id, amount = utils.parse_input(text)
     if target_user_id:
-        previous_amount, amount, current_amount = remove_debit(target_user_id, int(amount))
+        previous_amount, amount, current_amount = db.remove_debit(target_user_id, int(amount))
         blocks = custom_blocks.remove_points_block(previous_amount, amount, current_amount, target_user_id)
         say(text=f"{amount} points have been removed from {target_user_id}", blocks=blocks)
 
@@ -303,7 +141,7 @@ def handle_remove_submission_events(ack, body, client):
     username = userprofile["user"]["name"]
     points = body["view"]["state"]["values"]["points"]["plain_text_input-action"]["value"]
     timestamp_link = body["view"]["state"]["values"]["timestamp"]["timestamp_input"]["value"]
-    previous_amount, amount, current_amount = remove_debit(username, int(points), timestamp_link)
+    previous_amount, amount, current_amount = db.remove_debit(username, int(points), timestamp_link)
     blocks = custom_blocks.remove_points_block(previous_amount, amount, current_amount, username, link=timestamp_link)
     ts_link = timestamp_link.split('archives/')[1]
     channel_id = ts_link.split('/')[0]
@@ -320,7 +158,7 @@ def handle_add_submission_events(ack, body, say):
     username = userprofile["user"]["name"]
     points = body["view"]["state"]["values"]["points"]["plain_text_input-action"]["value"]
     timestamp_link = body["view"]["state"]["values"]["timestamp"]["timestamp_input"]["value"]
-    previous_amount, amount, current_amount = record_debit(username, int(points), timestamp_link)
+    previous_amount, amount, current_amount = db.record_debit(username, int(points), timestamp_link)
     blocks = custom_blocks.add_points_block(previous_amount, amount, current_amount, username, link=timestamp_link)
     ts_link = timestamp_link.split('archives/')[1]
     channel_id = ts_link.split('/')[0]
@@ -332,9 +170,8 @@ def handle_add_submission_events(ack, body, say):
 def handle_all_points_shortcut(ack, body):
     ack()
 
-    user_points = get_user_points()
+    user_points = db.get_user_points()
     if user_points:
-        print(user_points)
         blocks = custom_blocks.user_points_blocks(user_points)
         post_to_general(client, "Debit Points", blocks)
     else:
@@ -344,11 +181,11 @@ def handle_all_points_shortcut(ack, body):
 @app.command("/points")
 def handle_points_command(ack, client, body):
     ack()
-    print(body)
+
     text = body["text"]
     if text:
         user_id = text.replace("@", "")
-        user_data = get_user_data(user_id)
+        user_data = db.get_user_data(user_id)
         user_id = user_data.get("user_id")
         amount = user_data.get("amount")
         link = user_data.get("link")
@@ -356,9 +193,8 @@ def handle_points_command(ack, client, body):
         post_to_general(client, response_text)
 
     else:
-        user_points = get_user_points()
+        user_points = db.get_user_points()
         if user_points:
-            print(user_points)
             blocks = custom_blocks.user_points_blocks(user_points)
             post_to_general(client, "Debit Points", blocks)
 
@@ -401,18 +237,22 @@ def handle_set_reset_mode(ack, body, respond):
 
 
 @app.command("/reset")
-def handle_reset_command(ack, body):
+def handle_reset_command(ack, body, respond):
     ack()
-    trigger_id = body["trigger_id"]
-    blocks = custom_blocks.reset_db_modal_blocks()
-    client = app.client
-    client.views_open(trigger_id=trigger_id, view=blocks)
+    user_id = utils.get_user_id(body, "body")
+    if utils.is_workspace_admin(user_id):
+        trigger_id = body["trigger_id"]
+        blocks = custom_blocks.reset_db_modal_blocks()
+        client = app.client
+        client.views_open(trigger_id=trigger_id, view=blocks)
+    else:
+        respond("Command reserved for admin")
 
 
 @app.view("reset")
 def handle_reset_view(ack, client):
     ack()
-    reset_debits_table()
+    db.reset_debits_table()
     post_to_general(client, "The database was successfully reset.")
 
 
@@ -440,7 +280,7 @@ def set_report_schedule_day(day, time_hour):
     conn = get_db_connection()
     try:
         with closing(conn):
-            create_report_schedule_table(conn)
+            db.create_report_schedule_table(conn)
             c = conn.cursor()
             c.execute("DELETE FROM report_schedule")  # Clear existing day
             c.execute("INSERT INTO report_schedule (day, time) VALUES (?, ?)", (day, time_hour))
@@ -451,7 +291,7 @@ def set_report_schedule_day(day, time_hour):
 
 def send_weekly_report():
     client = app.client
-    user_points = get_user_points()
+    user_points = db.get_user_points()
     if user_points:
         try:
             blocks = custom_blocks.user_points_blocks(user_points)
@@ -505,10 +345,8 @@ def run_scheduler():
 
     def check_reset_mode():
         reset_mode = get_reset_mode()
-        print(reset_mode)
-        print(datetime.datetime.now().day == 1)
         if reset_mode == "automatic" and datetime.datetime.now().day == 1:
-            reset_debits_table()
+            db.reset_debits_table()
 
     schedule.every().hour.do(send_report_job)
     schedule.every(2).hours.do(check_reset_mode)
