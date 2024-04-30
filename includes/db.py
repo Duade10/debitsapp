@@ -1,12 +1,23 @@
 import sqlite3
-from main import get_db_connection
 from contextlib import closing
+
+
+def get_db_connection():
+    return sqlite3.connect("debits.db", check_same_thread=False)
 
 
 def create_report_schedule_table(conn):
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS report_schedule (day TEXT, time INTEGER)''')
     conn.commit()
+
+
+def create_reset_mode_table(conn):
+    c = conn.cursor()
+    c.execute("""CREATE TABLE IF NOT EXISTS reset_mode (
+                    id INTEGER PRIMARY KEY,
+                    mode TEXT NOT NULL
+                )""")
 
 
 def create_debits_table(conn):
@@ -135,3 +146,61 @@ def get_user_points():
     except sqlite3.Error as e:
         print(f"Error retrieving user points: {e}")
         return []
+
+
+def set_reset_mode(mode):
+    conn = get_db_connection()
+    try:
+        with closing(conn):
+            create_reset_mode_table(conn)
+            c = conn.cursor()
+            c.execute("DELETE FROM reset_mode")  # Clear existing mode
+            c.execute("INSERT INTO reset_mode (mode) VALUES (?)", (mode,))
+            conn.commit()
+    except sqlite3.Error as e:
+        print(f"Error setting reset mode: {e}")
+
+
+def set_report_schedule_day(day, time_hour):
+    conn = get_db_connection()
+    try:
+        with closing(conn):
+            create_report_schedule_table(conn)
+            c = conn.cursor()
+            c.execute("DELETE FROM report_schedule")  # Clear existing day
+            c.execute("INSERT INTO report_schedule (day, time) VALUES (?, ?)", (day, time_hour))
+            conn.commit()
+    except sqlite3.Error as e:
+        print(f"Error setting report schedule day: {e}")
+
+
+def get_report_schedule_day():
+    conn = get_db_connection()
+    try:
+        with closing(conn):
+            c = conn.cursor()
+            c.execute("SELECT day, time FROM report_schedule")
+            day_time = c.fetchone()
+            if day_time:
+                return day_time
+            else:
+                return None
+    except sqlite3.Error as e:
+        print(f"Error retrieving report schedule day: {e}")
+        return None
+
+
+def get_reset_mode():
+    conn = get_db_connection()
+    try:
+        with closing(conn):
+            c = conn.cursor()
+            c.execute("SELECT mode FROM reset_mode")
+            mode = c.fetchone()
+            if mode:
+                return mode[0]
+            else:
+                return None
+    except sqlite3.Error as e:
+        print(f"Error retrieving reset mode: {e}")
+        return None

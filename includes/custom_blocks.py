@@ -92,7 +92,7 @@ def points_modal(permalink, request_type, true=True):
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": "Select User",
+                    "text": "Select User (One User)",
                     "emoji": true
                 }
             },
@@ -105,7 +105,7 @@ def points_modal(permalink, request_type, true=True):
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": "Points",
+                    "text": "Points (Numbers Only)",
                     "emoji": true
                 }
             },
@@ -157,7 +157,7 @@ def user_points_blocks(user_points):
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"*Point(s): {total}*\nUser: <@{user_id}>"
+                "text": f"*User: <@{user_id}>*\n *Point(s): {total}*"
             }
         }
         blocks.append(section_block)

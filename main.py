@@ -1,9 +1,7 @@
 import datetime
 import os
-import sqlite3
 import threading
 import time
-from contextlib import closing
 
 import schedule
 from dotenv import load_dotenv
@@ -11,17 +9,12 @@ from slack_bolt import App
 
 from includes import custom_blocks, utils, db
 
-
 load_dotenv()
 
 app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
 )
-
-
-def get_db_connection():
-    return sqlite3.connect("debits.db", check_same_thread=False)
 
 
 def post_to_general(client, text, blocks=None):
@@ -204,33 +197,13 @@ def handle_points_command(ack, client, body):
 
 # SCHEDULING COMMAND
 
-def set_reset_mode(mode):
-    conn = get_db_connection()
-    try:
-        with closing(conn):
-            create_reset_mode_table(conn)
-            c = conn.cursor()
-            c.execute("DELETE FROM reset_mode")  # Clear existing mode
-            c.execute("INSERT INTO reset_mode (mode) VALUES (?)", (mode,))
-            conn.commit()
-    except sqlite3.Error as e:
-        print(f"Error setting reset mode: {e}")
-
-
-def create_reset_mode_table(conn):
-    c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS reset_mode (
-                    id INTEGER PRIMARY KEY,
-                    mode TEXT NOT NULL
-                )""")
-
 
 @app.command("/set-reset-mode")
 def handle_set_reset_mode(ack, body, respond):
     ack()
     mode = body["text"].strip().lower()
     if mode in ["automatic", "manual"]:
-        set_reset_mode(mode)
+        db.set_reset_mode(mode)
         respond(f"Reset mode set to {mode}.")
     else:
         respond("Invalid mode. Please enter 'automatic' or 'manual'.")
@@ -266,7 +239,7 @@ def handle_set_report_day(ack, body, respond):
         valid_days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
         if day in valid_days:
             if 0 <= time_hour < 24:
-                set_report_schedule_day(day.capitalize(), time_hour)
+                db.set_report_schedule_day(day.capitalize(), time_hour)
                 respond(f"Weekly report day set to {day.capitalize()} at {time_hour:02d}:00.")
             else:
                 respond("Invalid time. Please enter a valid hour (0-23).")
@@ -274,19 +247,6 @@ def handle_set_report_day(ack, body, respond):
             respond("Invalid day. Please enter a valid day of the week.")
     except ValueError:
         respond("Invalid input. Please provide the day and time in the format 'day hour'.")
-
-
-def set_report_schedule_day(day, time_hour):
-    conn = get_db_connection()
-    try:
-        with closing(conn):
-            db.create_report_schedule_table(conn)
-            c = conn.cursor()
-            c.execute("DELETE FROM report_schedule")  # Clear existing day
-            c.execute("INSERT INTO report_schedule (day, time) VALUES (?, ?)", (day, time_hour))
-            conn.commit()
-    except sqlite3.Error as e:
-        print(f"Error setting report schedule day: {e}")
 
 
 def send_weekly_report():
@@ -302,49 +262,18 @@ def send_weekly_report():
         print("No user points found in the database")
 
 
-def get_report_schedule_day():
-    conn = get_db_connection()
-    try:
-        with closing(conn):
-            c = conn.cursor()
-            c.execute("SELECT day, time FROM report_schedule")
-            day_time = c.fetchone()
-            if day_time:
-                return day_time
-            else:
-                return None
-    except sqlite3.Error as e:
-        print(f"Error retrieving report schedule day: {e}")
-        return None
-
-
-def get_reset_mode():
-    conn = get_db_connection()
-    try:
-        with closing(conn):
-            c = conn.cursor()
-            c.execute("SELECT mode FROM reset_mode")
-            mode = c.fetchone()
-            if mode:
-                return mode[0]
-            else:
-                return None
-    except sqlite3.Error as e:
-        print(f"Error retrieving reset mode: {e}")
-        return None
-
-
 def run_scheduler():
     def send_report_job():
         print("Checking Report Job")
-        day_time = get_report_schedule_day()
+        day_time = db.get_report_schedule_day()
         if day_time:
             day, time_hour = day_time
             if day == datetime.datetime.today().strftime('%A') and datetime.datetime.now().hour == time_hour:
                 send_weekly_report()
 
     def check_reset_mode():
-        reset_mode = get_reset_mode()
+        print("Checking Reset Mode")
+        reset_mode = db.get_reset_mode()
         if reset_mode == "automatic" and datetime.datetime.now().day == 1:
             db.reset_debits_table()
 
@@ -353,7 +282,7 @@ def run_scheduler():
 
     while True:
         schedule.run_pending()
-        time.sleep(0.5)
+        time.sleep(1)
 
 
 if __name__ == "__main__":
