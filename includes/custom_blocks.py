@@ -37,7 +37,7 @@ def get_app_mention_block():
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*4️⃣ You can use the `/points` * command to view a leaderboard of users and their accumulated debit points"
+                "text": "*4️⃣ You can use the `/points` * command to view a leaderboard of users and their accumulated debit points. <`/points` or `/points @john.doe`>"
             }
         },
         {
@@ -53,6 +53,20 @@ def get_app_mention_block():
             "text": {
                 "type": "mrkdwn",
                 "text": "*1️⃣ Use the `/set-report-day` command*. Type `/set-record` command followed by `the day of the week` and the `hour` of the day you want to get the reports weekly. For example: `/debit friday 18` "
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*2️⃣ Use the `/reset` command*. Type `/reset` command to clear the contents of the debit table in the database. Only administrators are permitted to use this command."
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*3️⃣ Use the `/set-reset-mode` command*. Type `/set-reset-mode` command to configure whether the bot should automatically clears the database automatically or not. *Automatic* and *Manual* are only options available. Only administrators are permitted to use this command. "
             }
         }
     ]
