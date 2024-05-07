@@ -300,5 +300,3 @@ pip-selfcheck.json
 .gitignore
 Pipfile
 Pipfile.lock
-
-# End of https://www.toptal.com/developers/gitignore/api/python,pycharm,venv
