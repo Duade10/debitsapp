@@ -206,10 +206,13 @@ def handle_all_points_shortcut(ack, body):
 @app.command("/set-reset-mode")
 def handle_set_reset_mode(ack, body, respond):
     ack()
-    mode = body["text"].strip().lower()
-    if mode in ["automatic", "manual"]:
-        db.set_reset_mode(mode)
-        respond(f"Reset mode set to {mode}.")
+    workspace_id = utils.get_workspace(body)
+    text = body["text"].strip()
+    day = int(text[0])
+    mode = str(text[1])
+    if mode.lower() in ["automatic", "manual"]:
+        db.set_reset_mode(workspace_id, day, mode)
+        respond(f"The debits database will reset on {day} next month /n The current reset mode is {mode.capitalize()}")
     else:
         respond("Invalid mode. Please enter 'automatic' or 'manual'.")
 

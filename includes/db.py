@@ -21,6 +21,18 @@ class UserDebit(Base):
         return f"<UserDebit(user='{self.user}', amount='{self.amount}', link='{self.link}', workspace='{self.workspace}')>"
 
 
+class ResetMode(Base):
+    __tablename__ = 'reset_mode'
+
+    id = Column(Integer, primary_key=True)
+    reset_date = Column(Integer, nullable=False)
+    reset_mode = Column(String, nullable=False)
+    workspace = Column(String, nullable=False)
+
+    def __repr__(self):
+        return f"<ResetMode(reset_date='{self.reset_date}', mode='{self.reset_mode}', workspace='{self.workspace}')>"
+
+
 Base.metadata.create_all(engine)
 
 
@@ -65,7 +77,7 @@ def remove_debit(user_id: str, workspace_id: str, amount: str | int, link=None):
     return previous_amount, amount, current_amount
 
 
-def get_single_user(user_id: str, workspace_id: str) -> any | tuple:
+def get_single_user(user_id: str, workspace_id: str) -> tuple:
     try:
         with Session() as session:
             user_data = session.query(UserDebit).filter_by(user=user_id, workspace=workspace_id).first()
@@ -89,3 +101,20 @@ def get_all_points(workspace_id: str) -> list:
     except Exception as e:
         print(f"An error occurred while retrieving points data: {e}")
         return []
+
+
+def set_reset_mode(workspace_id: str, day: int, mode: str):
+    try:
+        with Session() as session:
+            reset_data = session.query(ResetMode).filter_by(workspace=workspace_id).first()
+            if reset_data:
+                reset_data.reset_mode = mode
+                reset_data.day = day
+            else:
+                new_reset_data = ResetMode(reset_date=day, reset_mode=mode, workspace=workspace_id)
+                session.add(new_reset_data)
+
+        session.commit()
+        session.close()
+    except Exception as e:
+        print(f"An error occurred while trying to update reset {e}")
