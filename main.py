@@ -75,7 +75,7 @@ def handle_add_point_command(ack, body, say):
 
     text = body["text"]
     target_user_id, amount = utils.parse_input(text)
-    workspace_id = utils.get_workspace(body, 'command')
+    workspace_id = utils.get_workspace(body)
     if target_user_id:
         previous_amount, amount, current_amount = db.record_debit(target_user_id, workspace_id, int(amount))
         blocks = custom_blocks.add_points_block(previous_amount, amount, current_amount, target_user_id)
@@ -88,11 +88,12 @@ def handle_remove_point_command(ack, body, say):
 
     text = body["text"]
     target_user_id, amount = utils.parse_input(text)
-    workspace_id = utils.get_workspace(body, 'command')
+    workspace_id = utils.get_workspace(body)
     if target_user_id:
         previous_amount, amount, current_amount = db.remove_debit(target_user_id, workspace_id, int(amount))
         blocks = custom_blocks.remove_points_block(previous_amount, amount, current_amount, target_user_id)
         say(text=f"{amount} points have been removed from {target_user_id}", blocks=blocks)
+
 
 @app.command("/points")
 def handle_points_command(ack, client, body):
@@ -100,17 +101,14 @@ def handle_points_command(ack, client, body):
 
     text = body["text"]
     if text:
-        workspace_id = utils.get_workspace(body, 'command')
+        workspace_id = utils.get_workspace(body)
         user_id = text.replace("@", "")
-        user_data = db.get_single_user(user_id, workspace_id)
-        user_id = user_data.get("user_id")
-        amount = user_data.get("amount")
-        link = user_data.get("link")
-        response_text = f"<@{user_id}>: {amount} - {link}"
+        user, amount = db.get_single_user(user_id, workspace_id)
+        response_text = f"<@{user}>: {int(amount)}"
         post_to_general(client, response_text)
 
     else:
-        workspace_id = utils.get_workspace(body, 'command')
+        workspace_id = utils.get_workspace(body)
         user_points = db.get_all_points(workspace_id)
         if user_points:
             blocks = custom_blocks.user_points_blocks(user_points)
@@ -118,6 +116,7 @@ def handle_points_command(ack, client, body):
 
         else:
             post_to_general(client, "No user points found in the database.")
+
 
 def get_permalink(channel, timestamp):
     client = app.client
@@ -155,12 +154,14 @@ def handle_remove_point_shortcut(ack, body):
 @app.view("remove_modal_save")
 def handle_remove_submission_events(ack, body, client):
     ack()
+
+    workspace_id = utils.get_workspace(body)
     selected_user = body["view"]["state"]["values"]["user"]["multi_users_select-action"]["selected_users"][0]
     userprofile = client.users_info(user=selected_user)
     username = userprofile["user"]["name"]
     points = body["view"]["state"]["values"]["points"]["plain_text_input-action"]["value"]
     timestamp_link = body["view"]["state"]["values"]["timestamp"]["timestamp_input"]["value"]
-    previous_amount, amount, current_amount = db.remove_debit(username, int(points), timestamp_link)
+    previous_amount, amount, current_amount = db.remove_debit(username, workspace_id, int(points), timestamp_link)
     blocks = custom_blocks.remove_points_block(previous_amount, amount, current_amount, username, link=timestamp_link)
     ts_link = timestamp_link.split('archives/')[1]
     channel_id = ts_link.split('/')[0]
@@ -172,12 +173,13 @@ def handle_remove_submission_events(ack, body, client):
 def handle_add_submission_events(ack, body, say):
     ack()
 
+    workspace_id = utils.get_workspace(body)
     selected_user = body["view"]["state"]["values"]["user"]["multi_users_select-action"]["selected_users"][0]
     userprofile = client.users_info(user=selected_user)
     username = userprofile["user"]["name"]
     points = body["view"]["state"]["values"]["points"]["plain_text_input-action"]["value"]
     timestamp_link = body["view"]["state"]["values"]["timestamp"]["timestamp_input"]["value"]
-    previous_amount, amount, current_amount = db.record_debit(username, int(points), timestamp_link)
+    previous_amount, amount, current_amount = db.record_debit(username, workspace_id, int(points), timestamp_link)
     blocks = custom_blocks.add_points_block(previous_amount, amount, current_amount, username, link=timestamp_link)
     ts_link = timestamp_link.split('archives/')[1]
     channel_id = ts_link.split('/')[0]
@@ -189,13 +191,13 @@ def handle_add_submission_events(ack, body, say):
 def handle_all_points_shortcut(ack, body):
     ack()
 
-    user_points = db.get_user_points()
+    workspace_id = utils.get_workspace(body)
+    user_points = db.get_all_points(workspace_id)
     if user_points:
         blocks = custom_blocks.user_points_blocks(user_points)
         post_to_general(client, "Debit Points", blocks)
     else:
         post_to_general(client, "No user points found in the database.")
-
 
 
 # SCHEDULING COMMAND
