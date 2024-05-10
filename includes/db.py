@@ -65,14 +65,35 @@ def remove_debit(user_id, workspace_id, amount, link=None):
     return previous_amount, amount, current_amount
 
 
-def get_single_user(user_id, workspace_id):
-    session = Session()
-    user_data = session.query()
+def get_single_user(user_id: str, workspace_id: str) -> tuple:
+    global session
+    try:
+        session = Session()
+        user_data = session.query(UserDebit).filter_by(user=user_id, workspace=workspace_id).first()
+        if user_data:
+            user = user_data.user
+            amount = user_data.amount
+            return user, amount
+        else:
+            return None, None
+    except Exception as e:
+        print(f"An error occurred while retrieving user data: {e}")
+        return None, None
+    finally:
+        if session:
+            session.close()
+
 
 def get_all_points(workspace_id):
-    session = Session()
-    existing_debit = session.query(UserDebit).filter_by(workspace=workspace_id)
-    print(existing_debit)
-    session.commit()
-    session.close()
+    global session
+    try:
+        session = Session()
+        existing_debit = session.query(UserDebit).filter_by(workspace=workspace_id).all()
+        return existing_debit
+    except Exception as e:
+        print(f"An error occurred while retrieving points data: {e}")
+        return []
+    finally:
+        if session:
+            session.close()
 

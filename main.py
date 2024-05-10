@@ -100,8 +100,9 @@ def handle_points_command(ack, client, body):
 
     text = body["text"]
     if text:
+        workspace_id = utils.get_workspace(body, 'command')
         user_id = text.replace("@", "")
-        user_data = db.get_user_data(user_id)
+        user_data = db.get_single_user(user_id, workspace_id)
         user_id = user_data.get("user_id")
         amount = user_data.get("amount")
         link = user_data.get("link")
@@ -109,7 +110,8 @@ def handle_points_command(ack, client, body):
         post_to_general(client, response_text)
 
     else:
-        user_points = db.get_user_points()
+        workspace_id = utils.get_workspace(body, 'command')
+        user_points = db.get_all_points(workspace_id)
         if user_points:
             blocks = custom_blocks.user_points_blocks(user_points)
             post_to_general(client, "Debit Points", blocks)
