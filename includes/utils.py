@@ -35,6 +35,11 @@ def is_workspace_admin(user_id):
         return False
 
 
+def get_workspace(body, request_type: str):
+    if request_type == 'command':
+        return body["team_id"]
+
+
 def get_user_id(data: dict, data_type: str) -> str:
     user_id = None
     if data_type == "event":
@@ -45,5 +50,3 @@ def get_user_id(data: dict, data_type: str) -> str:
         except KeyError:
             user_id = data["user"]["id"]
     return user_id
-
-

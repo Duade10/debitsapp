@@ -75,8 +75,9 @@ def handle_add_point_command(ack, body, say):
 
     text = body["text"]
     target_user_id, amount = utils.parse_input(text)
+    workspace_id = utils.get_workspace(body, 'command')
     if target_user_id:
-        previous_amount, amount, current_amount = db.record_debit(target_user_id, int(amount))
+        previous_amount, amount, current_amount = db.record_debit(target_user_id, workspace_id, int(amount))
         blocks = custom_blocks.add_points_block(previous_amount, amount, current_amount, target_user_id)
         say(text=f"{amount} points have been added to {target_user_id}", blocks=blocks)
 
@@ -87,11 +88,34 @@ def handle_remove_point_command(ack, body, say):
 
     text = body["text"]
     target_user_id, amount = utils.parse_input(text)
+    workspace_id = utils.get_workspace(body, 'command')
     if target_user_id:
-        previous_amount, amount, current_amount = db.remove_debit(target_user_id, int(amount))
+        previous_amount, amount, current_amount = db.remove_debit(target_user_id, workspace_id, int(amount))
         blocks = custom_blocks.remove_points_block(previous_amount, amount, current_amount, target_user_id)
         say(text=f"{amount} points have been removed from {target_user_id}", blocks=blocks)
 
+@app.command("/points")
+def handle_points_command(ack, client, body):
+    ack()
+
+    text = body["text"]
+    if text:
+        user_id = text.replace("@", "")
+        user_data = db.get_user_data(user_id)
+        user_id = user_data.get("user_id")
+        amount = user_data.get("amount")
+        link = user_data.get("link")
+        response_text = f"<@{user_id}>: {amount} - {link}"
+        post_to_general(client, response_text)
+
+    else:
+        user_points = db.get_user_points()
+        if user_points:
+            blocks = custom_blocks.user_points_blocks(user_points)
+            post_to_general(client, "Debit Points", blocks)
+
+        else:
+            post_to_general(client, "No user points found in the database.")
 
 def get_permalink(channel, timestamp):
     client = app.client
@@ -170,29 +194,6 @@ def handle_all_points_shortcut(ack, body):
     else:
         post_to_general(client, "No user points found in the database.")
 
-
-@app.command("/points")
-def handle_points_command(ack, client, body):
-    ack()
-
-    text = body["text"]
-    if text:
-        user_id = text.replace("@", "")
-        user_data = db.get_user_data(user_id)
-        user_id = user_data.get("user_id")
-        amount = user_data.get("amount")
-        link = user_data.get("link")
-        response_text = f"<@{user_id}>: {amount} - {link}"
-        post_to_general(client, response_text)
-
-    else:
-        user_points = db.get_user_points()
-        if user_points:
-            blocks = custom_blocks.user_points_blocks(user_points)
-            post_to_general(client, "Debit Points", blocks)
-
-        else:
-            post_to_general(client, "No user points found in the database.")
 
 
 # SCHEDULING COMMAND
