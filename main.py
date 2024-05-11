@@ -261,7 +261,6 @@ def handle_set_report_day(ack, body, respond):
         respond(f"An error occurred: {e}. Please try again later.")
 
 
-
 def send_weekly_report(workspace_id: str):
     client = app.client
     user_points = db.get_all_points(workspace_id)
@@ -278,20 +277,30 @@ def send_weekly_report(workspace_id: str):
 def run_scheduler():
     def send_report_job():
         print("Checking Report Job")
-        day_time = db.get_report_daytime()
-        if day_time:
-            day, time_hour = day_time
+        client = app.client
+        reports_daytime = db.get_report_daytime()
+        for report_daytime in reports_daytime:
+            day = report_daytime.day
+            time_hour = report_daytime.hour
+            workspace_id = report_daytime.workspace
             if day == datetime.datetime.today().strftime('%A') and datetime.datetime.now().hour == time_hour:
-                send_weekly_report()
+                send_weekly_report(workspace_id)
 
     def check_reset_mode():
         print("Checking Reset Mode")
-        reset_mode = db.get_reset_mode()
-        if reset_mode == "automatic" and datetime.datetime.now().day == 1:
-            db.reset_debits_table()
+        client = app.client
+        reset_modes = db.get_reset_mode()
+        if reset_modes:
+            for reset_mode in reset_modes:
+                workspace_id = reset_mode.workspace
+                if reset_mode.reset_mode == "automatic" and datetime.datetime.now().day == 1:
+                    db.reset_debits_table(workspace_id)
+                    post_to_general(client, "Database Reset Successful")
+        else:
+            print('No mode in database')
 
-    schedule.every().hour.do(send_report_job)
-    schedule.every(2).hours.do(check_reset_mode)
+    schedule.every().minutes.do(send_report_job)
+    schedule.every().minutes.do(check_reset_mode)
 
     while True:
         schedule.run_pending()
