@@ -241,10 +241,12 @@ def handle_set_report_day(ack, body, respond):
     ack()
     workspace_id = utils.get_workspace(body)
     text = body["text"].strip().lower()
+
     try:
         day, time_hour = text.split()
         time_hour = int(time_hour)
         valid_days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
         if day in valid_days:
             if 0 <= time_hour < 24:
                 db.set_report_daytime(workspace_id, day, time_hour)
@@ -255,11 +257,14 @@ def handle_set_report_day(ack, body, respond):
             respond("Invalid day. Please enter a valid day of the week.")
     except ValueError:
         respond("Invalid input. Please provide the day and time in the format 'day hour'.")
+    except Exception as e:
+        respond(f"An error occurred: {e}. Please try again later.")
 
 
-def send_weekly_report():
+
+def send_weekly_report(workspace_id: str):
     client = app.client
-    user_points = db.get_user_points()
+    user_points = db.get_all_points(workspace_id)
     if user_points:
         try:
             blocks = custom_blocks.user_points_blocks(user_points)
@@ -273,7 +278,7 @@ def send_weekly_report():
 def run_scheduler():
     def send_report_job():
         print("Checking Report Job")
-        day_time = db.get_report_schedule_day()
+        day_time = db.get_report_daytime()
         if day_time:
             day, time_hour = day_time
             if day == datetime.datetime.today().strftime('%A') and datetime.datetime.now().hour == time_hour:

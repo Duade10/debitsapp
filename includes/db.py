@@ -128,7 +128,17 @@ def set_reset_mode(workspace_id: str, mode: str) -> None:
             session.commit()
             session.close()
     except Exception as e:
-        print(f"An error occurred while trying to update reset {e}")
+        print(f"An error occurred while trying to update reset: {e}")
+
+
+def get_reset_mode():
+    try:
+        with Session() as session:
+            reset_modes = session.query(ResetMode).all()
+            if reset_modes:
+                return reset_modes
+    except Exception as e:
+        print(f"An error occurred while trying to retrieve reset mode: {e}")
 
 
 def reset_debits_table(workspace_id: str) -> None:
@@ -156,3 +166,13 @@ def set_report_daytime(workspace_id: str, day: str, hour: int) -> None:
             session.close()
     except Exception as e:
         print(f"An error occurred while trying to set a new report time: {e}")
+
+
+def get_report_daytime():
+    try:
+        with Session() as session:
+            report_schedules = session.query(ReportSchedule).all()
+            if report_schedules:
+                return report_schedules
+    except Exception as e:
+        print(f"An error occurred while trying to retrieve report schedules: {e}")
