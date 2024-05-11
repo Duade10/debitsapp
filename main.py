@@ -207,12 +207,10 @@ def handle_all_points_shortcut(ack, body):
 def handle_set_reset_mode(ack, body, respond):
     ack()
     workspace_id = utils.get_workspace(body)
-    text = body["text"].strip()
-    day = int(text[0])
-    mode = str(text[1])
-    if mode.lower() in ["automatic", "manual"]:
-        db.set_reset_mode(workspace_id, day, mode)
-        respond(f"The debits database will reset on {day} next month /n The current reset mode is {mode.capitalize()}")
+    mode = body["text"].strip().lower()
+    if mode in ["automatic", "manual"]:
+        db.set_reset_mode(workspace_id, mode)
+        respond(f"Reset mode set to {mode}.")
     else:
         respond("Invalid mode. Please enter 'automatic' or 'manual'.")
 
@@ -231,15 +229,17 @@ def handle_reset_command(ack, body, respond):
 
 
 @app.view("reset")
-def handle_reset_view(ack, client):
+def handle_reset_view(ack, body, client):
     ack()
-    db.reset_debits_table()
+    workspace_id = utils.get_workspace(body)
+    db.reset_debits_table(workspace_id)
     post_to_general(client, "The database was successfully reset.")
 
 
 @app.command("/set-report-day")
 def handle_set_report_day(ack, body, respond):
     ack()
+    workspace_id = utils.get_workspace(body)
     text = body["text"].strip().lower()
     try:
         day, time_hour = text.split()
@@ -247,7 +247,7 @@ def handle_set_report_day(ack, body, respond):
         valid_days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
         if day in valid_days:
             if 0 <= time_hour < 24:
-                db.set_report_schedule_day(day.capitalize(), time_hour)
+                db.set_report_daytime(workspace_id, day, time_hour)
                 respond(f"Weekly report day set to {day.capitalize()} at {time_hour:02d}:00.")
             else:
                 respond("Invalid time. Please enter a valid hour (0-23).")
