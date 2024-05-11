@@ -166,7 +166,9 @@ def user_points_blocks(user_points):
         }
     ]
 
-    for user_id, total, link in user_points:
+    for user_data in user_points:
+        user_id = user_data.user
+        total = user_data.amount
         section_block = {
             "type": "section",
             "text": {

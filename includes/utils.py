@@ -1,3 +1,5 @@
+from typing import Any
+
 import main
 
 
@@ -28,11 +30,19 @@ def is_workspace_admin(user_id):
         is_owner = user_info["user"]["is_owner"]
         is_primary_owner = user_info["user"]["is_primary_owner"]
 
-        # Check if the user is a workspace admin, owner, or primary owner
         return is_admin or is_owner or is_primary_owner
     except Exception as e:
         print(f"Error checking workspace admin status: {e}")
         return False
+
+
+def get_workspace(body: dict) -> Any | None:
+    try:
+        team_id = body.get("team_id") or body.get("team", {}).get("id")
+        return team_id
+    except Exception as e:
+        print(f"An error occurred while extracting team ID: {e}")
+        return None
 
 
 def get_user_id(data: dict, data_type: str) -> str:
@@ -45,5 +55,3 @@ def get_user_id(data: dict, data_type: str) -> str:
         except KeyError:
             user_id = data["user"]["id"]
     return user_id
-
-
