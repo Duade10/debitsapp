@@ -279,13 +279,15 @@ def run_scheduler():
         print("Checking Report Job")
         client = app.client
         reports_daytime = db.get_report_daytime()
-        for report_daytime in reports_daytime:
-            day = report_daytime.day
-            time_hour = report_daytime.hour
-            workspace_id = report_daytime.workspace
-            if day == datetime.datetime.today().strftime('%A') and datetime.datetime.now().hour == time_hour:
-                send_weekly_report(workspace_id)
-
+        if reports_daytime:
+            for report_daytime in reports_daytime:
+                day = report_daytime.day
+                time_hour = report_daytime.hour
+                workspace_id = report_daytime.workspace
+                if day == datetime.datetime.today().strftime('%A') and datetime.datetime.now().hour == time_hour:
+                    send_weekly_report(workspace_id)
+        else:
+            print('No report in database')
     def check_reset_mode():
         print("Checking Reset Mode")
         client = app.client
