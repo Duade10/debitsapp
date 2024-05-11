@@ -5,3 +5,4 @@ slack-sdk==3.27.1; python_version >= '3.6'
 slackeventsapi==3.0.1; python_version >= '3.6'
 schedule~=1.2.1
 python-dotenv~=1.0.1
+SQLAlchemy==2.0.30
