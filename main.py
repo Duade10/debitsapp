@@ -299,7 +299,6 @@ def run_scheduler():
         else:
             print('No report in database')
     def check_reset_mode():
-        print("Checking Reset Mode")
         client = app.client
         reset_modes = db.get_reset_mode()
         if reset_modes:
