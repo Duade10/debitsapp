@@ -22,11 +22,13 @@ logging.basicConfig(
 load_dotenv()
 
 try:
+    logging.info("Trying Bot 1")
     app = App(
         token=os.environ.get("SLACK_BOT_TOKEN"),
         signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
     )
 except Exception as e:
+    logging.info("Trying Bot 2")
     logging.error(f"Error authenticating with workspace 1: {e}")
     app = App(
         token=os.environ.get("SLACK_BOT_TOKEN_1"),
