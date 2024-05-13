@@ -21,10 +21,17 @@ logging.basicConfig(
 
 load_dotenv()
 
-app = App(
-    token=os.environ.get("SLACK_BOT_TOKEN"),
-    signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
-)
+try:
+    app = App(
+        token=os.environ.get("SLACK_BOT_TOKEN"),
+        signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
+    )
+except Exception as e:
+    logging.error(f"Error authenticating with workspace 1: {e}")
+    app = App(
+        token=os.environ.get("SLACK_BOT_TOKEN_1"),
+        signing_secret=os.environ.get("SLACK_SIGNING_SECRET_1")
+    )
 
 
 def post_to_general(client, text, blocks=None):
