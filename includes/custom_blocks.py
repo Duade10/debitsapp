@@ -155,11 +155,6 @@ def user_points_blocks(user_points):
                 "type": "mrkdwn",
                 "text": f"*Here are all the users and points as of *\n {date_time_str}"
             },
-            "accessory": {
-                "type": "image",
-                "image_url": "https://api.slack.com/img/blocks/bkb_template_images/notifications.png",
-                "alt_text": "calendar thumbnail"
-            }
         },
         {
             "type": "divider"
