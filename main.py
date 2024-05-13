@@ -2,12 +2,22 @@ import datetime
 import os
 import threading
 import time
+import logging
 
 import schedule
 from dotenv import load_dotenv
 from slack_bolt import App
 
 from includes import custom_blocks, utils, db
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s: %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
 
 load_dotenv()
 
@@ -32,7 +42,7 @@ def post_to_general(client, text, blocks=None):
             )
 
     except Exception as e:
-        print(f"Error posting message: {e}")
+        logging.error(f"Error posting message: {e}")
 
 
 def post_to_channel(client, channel_id, text, blocks=None):
@@ -50,7 +60,7 @@ def post_to_channel(client, channel_id, text, blocks=None):
             )
 
     except Exception as e:
-        print(f"Error posting message: {e}")
+        logging.error(f"Error posting message: {e}")
 
 
 # SCHEDULING FUNCTIONS
@@ -269,9 +279,9 @@ def send_weekly_report(workspace_id: str):
             blocks = custom_blocks.user_points_blocks(user_points)
             post_to_general(client, "Weekly Debit Points Update", blocks)
         except Exception as e:
-            print(f"Error sending weekly report: {e}")
+            logging.error(f"Error sending weekly report: {e}")
     else:
-        print("No user points found in the database")
+        logging.error("No user points found in the database")
 
 
 def run_scheduler():
@@ -299,7 +309,7 @@ def run_scheduler():
                     db.reset_debits_table(workspace_id)
                     post_to_general(client, "Database Reset Successful")
         else:
-            print('No mode in database')
+            logging.info('No mode in database')
 
     schedule.every().minutes.do(send_report_job)
     schedule.every().minutes.do(check_reset_mode)
