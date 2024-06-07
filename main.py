@@ -1,12 +1,14 @@
 import datetime
+import logging
 import os
 import threading
 import time
-import logging
+from typing import List, Optional
 
 import schedule
 from dotenv import load_dotenv
 from slack_bolt import App
+from slack_sdk.errors import SlackApiError
 
 from includes import custom_blocks, utils, db
 
@@ -21,48 +23,44 @@ logging.basicConfig(
 
 load_dotenv()
 
-
 app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
 )
 
 
-
-def post_to_general(client, text, blocks=None):
+def post_to_general(client, text: str, blocks: Optional[List[dict]] = None):
     try:
+        message_payload = {
+            "channel": "debits-general",
+            "text": text,
+        }
         if blocks:
-            result = client.chat_postMessage(
-                channel="debits-general",
-                text=text,
-                blocks=blocks
-            )
-        else:
-            result = client.chat_postMessage(
-                channel="debits-general",
-                text=text
-            )
+            message_payload["blocks"] = blocks
 
-    except Exception as e:
-        logging.error(f"Error posting message: {e}")
+        client.chat_postMessage(**message_payload)
+
+    except SlackApiError as e:
+        logging.error(f"Error posting message to general channel: {e.response['error']}")
 
 
-def post_to_channel(client, channel_id, text, blocks=None):
+def post_to_channel(client, channel_id: str, text: str, blocks: Optional[List[dict]] = None):
     try:
+        message_payload = {
+            "channel": channel_id,
+            "text": text,
+        }
         if blocks:
-            result = client.chat_postMessage(
-                channel=channel_id,
-                text=text,
-                blocks=blocks
-            )
-        else:
-            result = client.chat_postMessage(
-                channel="debits-general",
-                text=text
-            )
+            message_payload["blocks"] = blocks
 
-    except Exception as e:
-        logging.error(f"Error posting message: {e}")
+        client.chat_postMessage(**message_payload)
+
+    except SlackApiError as e:
+        logging.error(f"Error posting message to channel {channel_id}: {e.response['error']}")
+        try:
+            post_to_general(client, text, blocks)
+        except SlackApiError as e:
+            logging.error(f"Error posting message to general channel as fallback: {e.response['error']}")
 
 
 # SCHEDULING FUNCTIONS
@@ -85,26 +83,28 @@ def handle_app_mention(ack, body, say):
 def handle_add_point_command(ack, body, say):
     ack()
 
+    channel_id = utils.get_workspace(body)
     text = body["text"]
     target_user_id, amount = utils.parse_input(text)
     workspace_id = utils.get_workspace(body)
     if target_user_id:
         previous_amount, amount, current_amount = db.record_debit(target_user_id, workspace_id, int(amount))
         blocks = custom_blocks.add_points_block(previous_amount, amount, current_amount, target_user_id)
-        say(text=f"{amount} points have been added to {target_user_id}", blocks=blocks)
+        post_to_channel(client, channel_id, f"{amount} points have been added to {target_user_id}", blocks)
 
 
 @app.command("/delete")
 def handle_remove_point_command(ack, body, say):
     ack()
 
+    channel_id = utils.get_workspace(body)
     text = body["text"]
     target_user_id, amount = utils.parse_input(text)
     workspace_id = utils.get_workspace(body)
     if target_user_id:
         previous_amount, amount, current_amount = db.remove_debit(target_user_id, workspace_id, int(amount))
         blocks = custom_blocks.remove_points_block(previous_amount, amount, current_amount, target_user_id)
-        say(text=f"{amount} points have been removed from {target_user_id}", blocks=blocks)
+        post_to_channel(client, channel_id, f"{amount} points have been added to {target_user_id}", blocks)
 
 
 @app.command("/points")
@@ -288,7 +288,7 @@ def send_weekly_report(workspace_id: str):
 
 def run_scheduler():
     def send_report_job():
-        print("Checking Report Job")
+        logging.info("Checking Report Job")
         client = app.client
         reports_daytime = db.get_report_daytime()
         if reports_daytime:
@@ -299,7 +299,8 @@ def run_scheduler():
                 if day == datetime.datetime.today().strftime('%A') and datetime.datetime.now().hour == time_hour:
                     send_weekly_report(workspace_id)
         else:
-            print('No report in database')
+            logging.info('No report in database')
+
     def check_reset_mode():
         client = app.client
         reset_modes = db.get_reset_mode()
