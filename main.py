@@ -21,6 +21,7 @@ logging.basicConfig(
 
 load_dotenv()
 
+last_reset_dates = {}
 
 app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
@@ -300,20 +301,34 @@ def run_scheduler():
                     send_weekly_report(workspace_id)
         else:
             print('No report in database')
+
     def check_reset_mode():
+        global last_reset_dates
         client = app.client
+        today = datetime.datetime.now()
         reset_modes = db.get_reset_mode()
+
         if reset_modes:
             for reset_mode in reset_modes:
                 workspace_id = reset_mode.workspace
-                if reset_mode.reset_mode == "automatic" and datetime.datetime.now().day == 1:
+                # Create a key for the current year and month
+                current_month_key = f"{workspace_id}_{today.year}_{today.month}"
+
+                # Only reset if mode is automatic, it's the first day of the month, 
+                # and we haven't already reset for this month
+                if (reset_mode.reset_mode == "automatic" and today.day == 1 and current_month_key not in last_reset_dates):
+
                     db.reset_debits_table(workspace_id)
                     post_to_general(client, "Database Reset Successful")
+
+                    # Mark that we've reset for this month
+                    last_reset_dates[current_month_key] = True
+                    logging.info(f"Automatic reset performed for workspace {workspace_id}")
         else:
             logging.info('No mode in database')
 
     schedule.every().minutes.do(send_report_job)
-    schedule.every().minutes.do(check_reset_mode)
+    schedule.every().day.at("00:01").do(check_reset_mode)
 
     while True:
         schedule.run_pending()
