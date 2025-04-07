@@ -23,6 +23,8 @@ logging.basicConfig(
 
 load_dotenv()
 
+last_reset_dates = {}
+
 app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
@@ -150,7 +152,8 @@ def handle_add_a_point_shortcut(ack, body):
     trigger_id = body["trigger_id"]
     link = get_permalink(channel_id, timestamp)
     blocks = custom_blocks.points_modal(link, request_type="add_modal_save")
-    client.views_open(trigger_id=trigger_id, view=blocks)
+    post_to_general(client, "Add points", blocks)
+    # client.views_open(trigger_id=trigger_id, view=blocks)
 
 
 @app.shortcut("remove_point")
@@ -162,7 +165,8 @@ def handle_remove_point_shortcut(ack, body):
     trigger_id = body["trigger_id"]
     link = get_permalink(channel_id, timestamp)
     blocks = custom_blocks.points_modal(link, request_type="remove_modal_save")
-    client.views_open(trigger_id=trigger_id, view=blocks)
+    post_to_general(client, "Remove points", blocks)
+    # client.views_open(trigger_id=trigger_id, view=blocks)
 
 
 @app.view("remove_modal_save")
@@ -180,7 +184,8 @@ def handle_remove_submission_events(ack, body, client):
     ts_link = timestamp_link.split('archives/')[1]
     channel_id = ts_link.split('/')[0]
     text = f"{amount} points have been removed from <@{username}>"
-    post_to_channel(client, channel_id, text, blocks)
+    post_to_general(client, text, blocks)
+    # post_to_channel(client, channel_id, text, blocks)
 
 
 @app.view("add_modal_save")
@@ -198,7 +203,8 @@ def handle_add_submission_events(ack, body, say):
     ts_link = timestamp_link.split('archives/')[1]
     channel_id = ts_link.split('/')[0]
     text = f"{amount} points have been added to <@{username}>"
-    post_to_channel(client, channel_id, text, blocks)
+    post_to_general(client, text, blocks)
+    # post_to_channel(client, channel_id, text, blocks)
 
 
 @app.shortcut("all_points")
@@ -301,22 +307,39 @@ def run_scheduler():
                 if day == datetime.datetime.today().strftime('%A') and datetime.datetime.now().hour == time_hour:
                     send_weekly_report(workspace_id)
         else:
+<<<<<<< HEAD
             logging.info('No report in database')
+=======
+            print('No report in database')
+>>>>>>> main
 
     def check_reset_mode():
+        global last_reset_dates
         client = app.client
+        today = datetime.datetime.now()
         reset_modes = db.get_reset_mode()
+
         if reset_modes:
             for reset_mode in reset_modes:
                 workspace_id = reset_mode.workspace
-                if reset_mode.reset_mode == "automatic" and datetime.datetime.now().day == 1:
+                # Create a key for the current year and month
+                current_month_key = f"{workspace_id}_{today.year}_{today.month}"
+
+                # Only reset if mode is automatic, it's the first day of the month, 
+                # and we haven't already reset for this month
+                if (reset_mode.reset_mode == "automatic" and today.day == 1 and current_month_key not in last_reset_dates):
+
                     db.reset_debits_table(workspace_id)
                     post_to_general(client, "Database Reset Successful")
+
+                    # Mark that we've reset for this month
+                    last_reset_dates[current_month_key] = True
+                    logging.info(f"Automatic reset performed for workspace {workspace_id}")
         else:
             logging.info('No mode in database')
 
     schedule.every().minutes.do(send_report_job)
-    schedule.every().minutes.do(check_reset_mode)
+    schedule.every().day.at("00:01").do(check_reset_mode)
 
     while True:
         schedule.run_pending()
