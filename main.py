@@ -307,11 +307,7 @@ def run_scheduler():
                 if day == datetime.datetime.today().strftime('%A') and datetime.datetime.now().hour == time_hour:
                     send_weekly_report(workspace_id)
         else:
-<<<<<<< HEAD
             logging.info('No report in database')
-=======
-            print('No report in database')
->>>>>>> main
 
     def check_reset_mode():
         global last_reset_dates
