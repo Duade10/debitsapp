@@ -90,7 +90,8 @@ def handle_add_point_command(ack, body, say):
     if target_user_id:
         previous_amount, amount, current_amount = db.record_debit(target_user_id, workspace_id, int(amount))
         blocks = custom_blocks.add_points_block(previous_amount, amount, current_amount, target_user_id)
-        post_to_channel(client, channel_id, f"{amount} points have been added to {target_user_id}", blocks)
+        post_to_general(client, f"{amount} points have been added to {target_user_id}", blocks)
+        # post_to_channel(client, channel_id, f"{amount} points have been added to {target_user_id}", blocks)
 
 
 @app.command("/delete")
@@ -104,7 +105,8 @@ def handle_remove_point_command(ack, body, say):
     if target_user_id:
         previous_amount, amount, current_amount = db.remove_debit(target_user_id, workspace_id, int(amount))
         blocks = custom_blocks.remove_points_block(previous_amount, amount, current_amount, target_user_id)
-        post_to_channel(client, channel_id, f"{amount} points have been added to {target_user_id}", blocks)
+        post_to_general(client, f"{amount} points have been removed from {target_user_id}", blocks)
+        # post_to_channel(client, channel_id, f"{amount} points have been added to {target_user_id}", blocks)
 
 
 @app.command("/points")
