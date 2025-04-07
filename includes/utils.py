@@ -4,22 +4,29 @@ import main
 import logging
 
 def parse_input(input_string):
-    input_strings = str(input_string).split()
-
+    input_strings = str(input_string).strip().split()
+    
+    # Check if input is empty
+    if not input_strings:
+        raise ValueError("Please provide a user and an amount (e.g., '@username 5')")
+    
+    # Check if both user and amount are provided
     if len(input_strings) != 2:
-        raise ValueError("Input string must contain exactly two elements: user ID and amount")
-
+        raise ValueError("Please provide both a user and an amount (e.g., '@username 5')")
+    
     user_id = input_strings[0]
+    # Check if user ID starts with @
     if not user_id.startswith('@'):
-        raise ValueError("User ID must start with '@'")
-    user_id = user_id[1:]
-
+        raise ValueError("User ID must start with '@' (e.g., '@username')")
+    user_id = user_id[1:]  # Remove the @ symbol
+    
     amount = input_strings[1]
+    # Check if amount is a valid integer
     try:
         amount = int(amount)
     except ValueError:
-        raise ValueError("Amount must be a valid numerical value")
-
+        raise ValueError(f"'{amount}' is not a valid number. Amount must be a number.")
+    
     return user_id, amount
 
 
