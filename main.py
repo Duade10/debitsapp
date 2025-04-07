@@ -149,7 +149,8 @@ def handle_add_a_point_shortcut(ack, body):
     trigger_id = body["trigger_id"]
     link = get_permalink(channel_id, timestamp)
     blocks = custom_blocks.points_modal(link, request_type="add_modal_save")
-    client.views_open(trigger_id=trigger_id, view=blocks)
+    post_to_general(client, "Add points", blocks)
+    # client.views_open(trigger_id=trigger_id, view=blocks)
 
 
 @app.shortcut("remove_point")
@@ -161,7 +162,8 @@ def handle_remove_point_shortcut(ack, body):
     trigger_id = body["trigger_id"]
     link = get_permalink(channel_id, timestamp)
     blocks = custom_blocks.points_modal(link, request_type="remove_modal_save")
-    client.views_open(trigger_id=trigger_id, view=blocks)
+    post_to_general(client, "Remove points", blocks)
+    # client.views_open(trigger_id=trigger_id, view=blocks)
 
 
 @app.view("remove_modal_save")
@@ -179,7 +181,8 @@ def handle_remove_submission_events(ack, body, client):
     ts_link = timestamp_link.split('archives/')[1]
     channel_id = ts_link.split('/')[0]
     text = f"{amount} points have been removed from <@{username}>"
-    post_to_channel(client, channel_id, text, blocks)
+    post_to_general(client, text, blocks)
+    # post_to_channel(client, channel_id, text, blocks)
 
 
 @app.view("add_modal_save")
@@ -197,7 +200,8 @@ def handle_add_submission_events(ack, body, say):
     ts_link = timestamp_link.split('archives/')[1]
     channel_id = ts_link.split('/')[0]
     text = f"{amount} points have been added to <@{username}>"
-    post_to_channel(client, channel_id, text, blocks)
+    post_to_general(client, text, blocks)
+    # post_to_channel(client, channel_id, text, blocks)
 
 
 @app.shortcut("all_points")
