@@ -82,18 +82,21 @@ def handle_app_mention(ack, body, say):
 
 
 @app.command("/add")
-def handle_add_point_command(ack, body, say):
+def handle_add_point_command(ack, body, client, say):
     ack()
 
-    channel_id = utils.get_workspace(body)
     text = body["text"]
-    target_user_id, amount = utils.parse_input(text)
-    workspace_id = utils.get_workspace(body)
-    if target_user_id:
+    try:
+        target_user_id, amount = utils.parse_input(text)
+        workspace_id = utils.get_workspace(body)
+
         previous_amount, amount, current_amount = db.record_debit(target_user_id, workspace_id, int(amount))
         blocks = custom_blocks.add_points_block(previous_amount, amount, current_amount, target_user_id)
-        post_to_general(client, f"{amount} points have been added to {target_user_id}", blocks)
-        # post_to_channel(client, channel_id, f"{amount} points have been added to {target_user_id}", blocks)
+        post_to_general(client, f"{amount} points have been added to <@{target_user_id}>", blocks)
+    except ValueError as e:
+        # Return a helpful error message to the user
+        error_message = f"Error: {str(e)}"
+        post_to_general(client, error_message)
 
 
 @app.command("/delete")
