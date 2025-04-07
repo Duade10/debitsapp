@@ -155,8 +155,7 @@ def handle_add_a_point_shortcut(ack, body):
     trigger_id = body["trigger_id"]
     link = get_permalink(channel_id, timestamp)
     blocks = custom_blocks.points_modal(link, request_type="add_modal_save")
-    post_to_general(client, "Add points", blocks)
-    # client.views_open(trigger_id=trigger_id, view=blocks)
+    client.views_open(trigger_id=trigger_id, view=blocks)
 
 
 @app.shortcut("remove_point")
@@ -168,8 +167,7 @@ def handle_remove_point_shortcut(ack, body):
     trigger_id = body["trigger_id"]
     link = get_permalink(channel_id, timestamp)
     blocks = custom_blocks.points_modal(link, request_type="remove_modal_save")
-    post_to_general(client, "Remove points", blocks)
-    # client.views_open(trigger_id=trigger_id, view=blocks)
+    client.views_open(trigger_id=trigger_id, view=blocks)
 
 
 @app.view("remove_modal_save")
