@@ -68,6 +68,35 @@ def get_app_mention_block():
                 "type": "mrkdwn",
                 "text": "*3️⃣ Use the `/set-reset-mode` command*. Type `/set-reset-mode` command to configure whether the bot should automatically clears the database automatically or not. *Automatic* and *Manual* are only options available. Only administrators are permitted to use this command. "
             }
+        },
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "Checklist Commands",
+                "emoji": true
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*1️⃣ Use the `/create-checklist` command*. Opens a modal to create a new reusable checklist with multiple tasks."
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*2️⃣ Use the `/checklist` command*. Type `/checklist` to see all available checklists or `/checklist [name]` to use a specific checklist in the current channel."
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*3️⃣ Use the `/delete-checklist` command*. Opens a modal to delete an existing checklist."
+            }
         }
     ]
 
@@ -285,4 +314,260 @@ def reset_db_modal_blocks():
             }
         ]
     }
+    return blocks
+
+
+def create_checklist_modal():
+    """Modal for creating a new checklist"""
+    return {
+        "type": "modal",
+        "callback_id": "create_checklist",
+        "title": {
+            "type": "plain_text",
+            "text": "Create Checklist",
+            "emoji": true
+        },
+        "submit": {
+            "type": "plain_text",
+            "text": "Create",
+            "emoji": true
+        },
+        "close": {
+            "type": "plain_text",
+            "text": "Cancel",
+            "emoji": true
+        },
+        "blocks": [
+            {
+                "type": "input",
+                "block_id": "checklist_name",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "checklist_name_input",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Enter checklist name"
+                    }
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Checklist Name",
+                    "emoji": true
+                }
+            },
+            {
+                "type": "input",
+                "block_id": "checklist_items",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "checklist_items_input",
+                    "multiline": true,
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Enter items, one per line"
+                    }
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Checklist Items",
+                    "emoji": true
+                }
+            }
+        ]
+    }
+
+
+def delete_checklist_modal(checklists):
+    """Modal for deleting an existing checklist"""
+    options = [
+        {
+            "text": {
+                "type": "plain_text", 
+                "text": name
+            },
+            "value": name
+        }
+        for name in checklists
+    ]
+    
+    return {
+        "type": "modal",
+        "callback_id": "delete_checklist",
+        "title": {
+            "type": "plain_text",
+            "text": "Delete Checklist",
+            "emoji": true
+        },
+        "submit": {
+            "type": "plain_text",
+            "text": "Delete",
+            "emoji": true
+        },
+        "close": {
+            "type": "plain_text",
+            "text": "Cancel",
+            "emoji": true
+        },
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "Select a checklist to delete:"
+                }
+            },
+            {
+                "type": "input",
+                "block_id": "checklist_select",
+                "element": {
+                    "type": "static_select",
+                    "action_id": "checklist_select_action",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Select a checklist"
+                    },
+                    "options": options
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Checklist",
+                    "emoji": true
+                }
+            }
+        ]
+    }
+
+
+def render_checklist_instance(instance_data):
+    """Render a checklist instance with completed items"""
+    blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": f"📋 {instance_data['name']}",
+                "emoji": True
+            }
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "Progress tracking"
+                }
+            ]
+        },
+        {
+            "type": "divider"
+        }
+    ]
+
+    # Render each checklist item
+    for item in instance_data['items']:
+        is_checked = item['is_checked'] == 1
+        checked_info = ""
+        if is_checked and item['checked_by']:
+            checked_info = f" ✅ _Completed by <@{item['checked_by']}>_"
+
+        # Create the checkbox element
+        checkbox = {
+            "type": "checkboxes",
+            "action_id": f"toggle_item_{item['id']}_{instance_data['instance_id']}",
+            "options": [
+                {
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Complete"
+                    },
+                    "value": f"item_{item['id']}_{instance_data['instance_id']}"
+                }
+            ]
+        }
+        
+        # Add initial_options only if the item is checked
+        if is_checked:
+            checkbox["initial_options"] = [
+                {
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Complete"
+                    },
+                    "value": f"item_{item['id']}_{instance_data['instance_id']}"
+                }
+            ]
+
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"{item['text']}{checked_info}"
+            },
+            "accessory": checkbox
+        })
+
+    # Add completion message
+    if instance_data['is_complete'] == 1:
+        blocks.append({
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "✅ *All items have been completed!*"
+                }
+            ]
+        })
+
+    return blocks
+
+
+def checklist_completion_message(checklist_name):
+    """Message to send when a checklist is completed"""
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"✅ *Checklist \"{checklist_name}\" has been completed!*"
+            }
+        }
+    ]
+
+
+def list_checklists_blocks(checklists):
+    """Display a list of available checklists"""
+    if not checklists:
+        return [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "No checklists found. Create one with the `/create-checklist` command."
+                }
+            }
+        ]
+    
+    blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "Available Checklists",
+                "emoji": true
+            }
+        },
+        {
+            "type": "divider"
+        }
+    ]
+    
+    for checklist in checklists:
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"`/checklist {checklist}`"
+            }
+        })
+    
     return blocks

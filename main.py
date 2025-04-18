@@ -3,6 +3,7 @@ import logging
 import os
 import threading
 import time
+import re
 from typing import List, Optional
 
 import schedule
@@ -247,6 +248,225 @@ def handle_reset_command(ack, body, respond):
         client.views_open(trigger_id=trigger_id, view=blocks)
     else:
         respond("Command reserved for admin")
+
+
+@app.command("/create-checklist")
+def handle_create_checklist_command(ack, body, client):
+    """Command handler for /create-checklist"""
+    ack()
+    
+    trigger_id = body["trigger_id"]
+    blocks = custom_blocks.create_checklist_modal()
+    client.views_open(trigger_id=trigger_id, view=blocks)
+
+
+@app.view("create_checklist")
+def handle_create_checklist_submission(ack, body, client):
+    """Handle submission of the create checklist modal"""
+    # Extract the values
+    checklist_name = body["view"]["state"]["values"]["checklist_name"]["checklist_name_input"]["value"]
+    items_text = body["view"]["state"]["values"]["checklist_items"]["checklist_items_input"]["value"]
+    items = [item.strip() for item in items_text.split("\n") if item.strip()]
+    
+    # Get user and workspace info
+    user_id = body["user"]["id"]
+    workspace_id = utils.get_workspace(body)
+    
+    # Create the checklist
+    success = db.create_checklist(checklist_name, workspace_id, user_id, items)
+    
+    # Acknowledge the submission
+    ack()
+    
+    # Send a confirmation message to the user
+    if success:
+        try:
+            client.chat_postEphemeral(
+                channel=user_id,
+                user=user_id,
+                text=f"Checklist '{checklist_name}' created successfully! Use `/checklist {checklist_name}` to use it."
+            )
+        except Exception as e:
+            logging.error(f"Error sending confirmation: {e}")
+    else:
+        try:
+            client.chat_postEphemeral(
+                channel=user_id,
+                user=user_id,
+                text=f"Error creating checklist '{checklist_name}'. Please try again."
+            )
+        except Exception as e:
+            logging.error(f"Error sending error message: {e}")
+
+
+@app.command("/checklist")
+def handle_checklist_command(ack, body, client, say):
+    """Command handler for /checklist"""
+    ack()
+
+    channel_id = body["channel_id"]
+    workspace_id = utils.get_workspace(body)
+    checklist_name = body["text"].strip()
+
+    if not checklist_name:
+        # If no name provided, list all available checklists
+        checklists = db.get_all_checklists(workspace_id)
+        blocks = custom_blocks.list_checklists_blocks(checklists)
+        say(blocks=blocks, text="Available Checklists")
+        return
+
+    # Get the checklist by name
+    checklist = db.get_checklist_by_name(checklist_name, workspace_id)
+    if not checklist:
+        say(f"Checklist '{checklist_name}' not found. Use `/checklist` to see available checklists.")
+        return
+
+    # Create the checklist instance before posting
+    instance_id = db.create_checklist_instance(checklist["id"], channel_id, "temp")  # placeholder ts
+    if not instance_id:
+        say("Error creating checklist instance. Please try again.")
+        return
+
+    instance_data = db.get_checklist_instance(instance_id)
+    if not instance_data:
+        say("Error retrieving checklist instance data.")
+        return
+
+    # Post the checklist message
+    response = client.chat_postMessage(
+        channel=channel_id,
+        blocks=custom_blocks.render_checklist_instance(instance_data),
+        text=f"Checklist: {checklist_name}"
+    )
+
+    # Update the instance with the real message timestamp
+    if response["ok"]:
+        message_ts = response["ts"]
+        with db.Session() as session:
+            inst = session.query(db.ChecklistInstance).filter_by(id=instance_id).first()
+            inst.message_ts = message_ts
+            session.commit()
+
+
+
+@app.command("/delete-checklist")
+def handle_delete_checklist_command(ack, body, client):
+    """Command handler for /delete-checklist"""
+    ack()
+    
+    workspace_id = utils.get_workspace(body)
+    user_id = utils.get_user_id(body, "body")
+    
+    # Get all available checklists
+    checklists = db.get_all_checklists(workspace_id)
+    if not checklists:
+        client.chat_postEphemeral(
+            channel=body["channel_id"],
+            user=user_id,
+            text="No checklists found to delete."
+        )
+        return
+    
+    # Show the delete modal
+    blocks = custom_blocks.delete_checklist_modal(checklists)
+    client.views_open(trigger_id=body["trigger_id"], view=blocks)
+
+
+@app.action(re.compile("toggle_item_(.*)"))
+def handle_item_toggle(ack, body, client):
+    """Handle checkbox actions for checklist items"""
+    ack()
+    
+    # Extract info from the action
+    action_id = body["actions"][0]["action_id"]
+    selected = len(body["actions"][0]["selected_options"]) > 0
+    
+    # Extract item_id and instance_id from the action_id
+    # Format: toggle_item_{item_id}_{instance_id}
+    parts = action_id.split("_")
+    if len(parts) >= 3:
+        item_id = parts[2]
+        instance_id = parts[3] if len(parts) > 3 else None
+        
+        if not instance_id:
+            logging.error(f"No instance_id found in action: {action_id}")
+            return
+        
+        # Get user info
+        user_id = body["user"]["id"]
+        
+        # Update the item status
+        result = db.update_checklist_item(int(instance_id), int(item_id), selected, user_id)
+        
+        if result and "all_complete" in result and result["all_complete"]:
+            # If all items are checked, get the updated instance and update the message
+            instance_data = db.get_checklist_instance(result["checklist_instance"])
+            if instance_data:
+                # Update the message with the completed checklist
+                try:
+                    client.chat_update(
+                        channel=body["channel"]["id"],
+                        ts=body["message"]["ts"],
+                        blocks=custom_blocks.render_checklist_instance(instance_data),
+                        text=f"Checklist: {instance_data['name']}"
+                    )
+                    
+                    # Send completion notification
+                    client.chat_postMessage(
+                        channel=body["channel"]["id"],
+                        blocks=custom_blocks.checklist_completion_message(instance_data["name"]),
+                        text=f"Checklist '{instance_data['name']}' completed!"
+                    )
+                except Exception as e:
+                    logging.error(f"Error updating message: {e}")
+        else:
+            # Update the UI to reflect the change
+            instance_data = db.get_checklist_instance(int(instance_id))
+            if instance_data:
+                try:
+                    client.chat_update(
+                        channel=body["channel"]["id"],
+                        ts=body["message"]["ts"],
+                        blocks=custom_blocks.render_checklist_instance(instance_data),
+                        text=f"Checklist: {instance_data['name']}"
+                    )
+                except Exception as e:
+                    logging.error(f"Error updating message: {e}")
+
+
+@app.view("delete_checklist")
+def handle_delete_checklist_submission(ack, body, client):
+    """Handle submission of the delete checklist modal"""
+    # Extract the values
+    selected_checklist = body["view"]["state"]["values"]["checklist_select"]["checklist_select_action"]["selected_option"]["value"]
+    workspace_id = utils.get_workspace(body)
+    user_id = body["user"]["id"]
+
+    # Delete the checklist
+    success = db.delete_checklist(selected_checklist, workspace_id)
+
+    # Acknowledge the submission
+    ack()
+
+    # Send a confirmation message to the user
+    if success:
+        try:
+            client.chat_postEphemeral(
+                channel=user_id,
+                user=user_id,
+                text=f"Checklist '{selected_checklist}' deleted successfully!"
+            )
+        except Exception as e:
+            logging.error(f"Error sending confirmation: {e}")
+    else:
+        try:
+            client.chat_postEphemeral(
+                channel=user_id,
+                user=user_id,
+                text=f"Error deleting checklist '{selected_checklist}'. Please try again."
+            )
+        except Exception as e:
+            logging.error(f"Error sending error message: {e}")
 
 
 @app.view("reset")
