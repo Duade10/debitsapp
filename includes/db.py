@@ -78,6 +78,7 @@ class ChecklistInstance(Base):
     channel = Column(String, nullable=False)
     message_ts = Column(String, nullable=False)
     created_at = Column(String, nullable=False)
+    completed_at = Column(String, nullable=False)
     is_complete = Column(Integer, default=0)  # 0 = incomplete, 1 = complete
     
     def __repr__(self):
@@ -380,7 +381,8 @@ def update_checklist_item(instance_id, item_id, checked, user_id):
                 ).first()
                 if instance:
                     instance.is_complete = 1
-                    
+                    instance.completed_at = datetime.datetime.now().isoformat()  # Add this line
+
             session.commit()
             
             return {
@@ -429,6 +431,7 @@ def get_checklist_instance(instance_id):
                 "name": checklist.name,
                 "channel": instance.channel,
                 "is_complete": instance.is_complete,
+                "completed_at": instance.completed_at,  # Add this line
                 "items": [
                     {
                         "id": item[0],

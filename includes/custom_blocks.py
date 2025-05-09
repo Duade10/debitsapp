@@ -521,8 +521,25 @@ def render_checklist_instance(instance_data):
     return blocks
 
 
-def checklist_completion_message(checklist_name):
-    """Message to send when a checklist is completed"""
+def checklist_completion_message(checklist_name, created_at, completed_at):
+    """Message to send when a checklist is completed with duration"""
+    # Parse the timestamps
+    created = datetime.datetime.fromisoformat(created_at)
+    completed = datetime.datetime.fromisoformat(completed_at)
+    
+    # Calculate duration
+    duration = completed - created
+    hours, remainder = divmod(duration.total_seconds(), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    
+    duration_str = ""
+    if hours > 0:
+        duration_str += f"{int(hours)} hour{'s' if hours > 1 else ''} "
+    if minutes > 0:
+        duration_str += f"{int(minutes)} minute{'s' if minutes > 1 else ''} "
+    if seconds > 0 and hours == 0:  # Only show seconds if less than an hour
+        duration_str += f"{int(seconds)} second{'s' if seconds > 1 else ''}"
+    
     return [
         {
             "type": "section",
@@ -530,6 +547,15 @@ def checklist_completion_message(checklist_name):
                 "type": "mrkdwn",
                 "text": f"✅ *Checklist \"{checklist_name}\" has been completed!*"
             }
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"⏱️ Completion time: {duration_str.strip()}"
+                }
+            ]
         }
     ]
 
