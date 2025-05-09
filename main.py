@@ -411,10 +411,14 @@ def handle_item_toggle(ack, body, client):
                         text=f"Checklist: {instance_data['name']}"
                     )
                     
-                    # Send completion notification
+                    # Send completion notification with duration
                     client.chat_postMessage(
                         channel=body["channel"]["id"],
-                        blocks=custom_blocks.checklist_completion_message(instance_data["name"]),
+                        blocks=custom_blocks.checklist_completion_message(
+                            instance_data["name"],
+                            instance_data["created_at"],
+                            instance_data["completed_at"]
+                        ),
                         text=f"Checklist '{instance_data['name']}' completed!"
                     )
                 except Exception as e:
