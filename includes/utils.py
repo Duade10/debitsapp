@@ -62,3 +62,22 @@ def get_user_id(data: dict, data_type: str) -> str:
         except KeyError:
             user_id = data["user"]["id"]
     return user_id
+
+
+def format_time_difference(start_time, end_time):
+    """Format the difference between two ISO timestamps"""
+    start = datetime.datetime.fromisoformat(start_time)
+    end = datetime.datetime.fromisoformat(end_time)
+    delta = end - start
+    
+    hours, remainder = divmod(delta.seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    
+    if delta.days > 0:
+        return f"{delta.days} days, {hours} hours"
+    elif hours > 0:
+        return f"{hours} hours, {minutes} minutes"
+    elif minutes > 0:
+        return f"{minutes} minutes, {seconds} seconds"
+    else:
+        return f"{seconds} seconds"

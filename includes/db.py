@@ -78,8 +78,9 @@ class ChecklistInstance(Base):
     channel = Column(String, nullable=False)
     message_ts = Column(String, nullable=False)
     created_at = Column(String, nullable=False)
-    is_complete = Column(Integer, default=0)  # 0 = incomplete, 1 = complete
-    
+    completed_at = Column(String, nullable=True)  # Add this line
+    is_complete = Column(Integer, default=0)
+
     def __repr__(self):
         return f"<ChecklistInstance(checklist_id='{self.checklist_id}', channel='{self.channel}')>"
 
@@ -354,10 +355,10 @@ def update_checklist_item(instance_id, item_id, checked, user_id):
                 instance_id=instance_id,
                 item_id=item_id
             ).first()
-            
+
             if not item_status:
                 return False
-                
+
             item_status.is_checked = 1 if checked else 0
             if checked:
                 item_status.checked_by = user_id
@@ -365,14 +366,14 @@ def update_checklist_item(instance_id, item_id, checked, user_id):
             else:
                 item_status.checked_by = None
                 item_status.checked_at = None
-                
+
             # Check if all items are checked
             all_items = session.query(ChecklistItemStatus).filter_by(
                 instance_id=instance_id
             ).all()
-            
+
             all_checked = all(item.is_checked == 1 for item in all_items)
-            
+
             # Update instance status if needed
             if all_checked:
                 instance = session.query(ChecklistInstance).filter_by(
@@ -380,6 +381,7 @@ def update_checklist_item(instance_id, item_id, checked, user_id):
                 ).first()
                 if instance:
                     instance.is_complete = 1
+                    instance.completed_at = datetime.datetime.now().isoformat()
                     
             session.commit()
             
@@ -388,9 +390,8 @@ def update_checklist_item(instance_id, item_id, checked, user_id):
                 "checklist_instance": instance_id
             }
     except Exception as e:
-        print(f"Error updating checklist item: {e}")
+        logging.error(f"Error updating checklist item: {e}")
         return False
-
 
 def get_checklist_instance(instance_id):
     """Get a checklist instance with all items and their statuses"""
@@ -428,6 +429,8 @@ def get_checklist_instance(instance_id):
                 "checklist_id": checklist.id,
                 "name": checklist.name,
                 "channel": instance.channel,
+                "created_at": instance.created_at,  # Ensure this is included
+                "completed_at": instance.completed_at,  # Ensure this is included
                 "is_complete": instance.is_complete,
                 "items": [
                     {
@@ -441,9 +444,8 @@ def get_checklist_instance(instance_id):
                 ]
             }
     except Exception as e:
-        print(f"Error getting checklist instance: {e}")
+        logging.error(f"Error getting checklist instance: {e}")
         return None
-
 
 def delete_checklist(name, workspace_id):
     """Delete a checklist by name"""

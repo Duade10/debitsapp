@@ -440,12 +440,23 @@ def delete_checklist_modal(checklists):
 
 def render_checklist_instance(instance_data):
     """Render a checklist instance with completed items"""
+    # Safely get creation time with fallback
+    created_at = instance_data.get('created_at')
+    if created_at:
+        try:
+            created_time = datetime.datetime.fromisoformat(created_at).strftime('%b %d, %Y at %I:%M %p')
+            created_text = f"Created: {created_time}"
+        except (ValueError, TypeError):
+            created_text = "Creation time not available"
+    else:
+        created_text = "Creation time not available"
+
     blocks = [
         {
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": f"📋 {instance_data['name']}",
+                "text": f"📋 {instance_data.get('name', 'Unnamed Checklist')}",
                 "emoji": True
             }
         },
@@ -454,7 +465,7 @@ def render_checklist_instance(instance_data):
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": "Progress tracking"
+                    "text": created_text
                 }
             ]
         },
@@ -464,75 +475,116 @@ def render_checklist_instance(instance_data):
     ]
 
     # Render each checklist item
-    for item in instance_data['items']:
-        is_checked = item['is_checked'] == 1
+    for item in instance_data.get('items', []):
+        is_checked = item.get('is_checked', 0) == 1
         checked_info = ""
-        if is_checked and item['checked_by']:
-            checked_info = f" ✅ _Completed by <@{item['checked_by']}>_"
+        
+        if is_checked and item.get('checked_by'):
+            checked_time = ""
+            if item.get('checked_at'):
+                try:
+                    checked_time = datetime.datetime.fromisoformat(item['checked_at']).strftime('%b %d at %I:%M %p')
+                except (ValueError, TypeError):
+                    checked_time = ""
+            checked_info = f" ✅ _Completed by <@{item['checked_by']}>"
+            if checked_time:
+                checked_info += f" on {checked_time}"
+            checked_info += "_"
 
         # Create the checkbox element
         checkbox = {
             "type": "checkboxes",
-            "action_id": f"toggle_item_{item['id']}_{instance_data['instance_id']}",
+            "action_id": f"toggle_item_{item.get('id', '')}_{instance_data.get('instance_id', '')}",
             "options": [
                 {
                     "text": {
                         "type": "mrkdwn",
                         "text": "Complete"
                     },
-                    "value": f"item_{item['id']}_{instance_data['instance_id']}"
+                    "value": f"item_{item.get('id', '')}_{instance_data.get('instance_id', '')}"
                 }
             ]
         }
         
-        # Add initial_options only if the item is checked
         if is_checked:
-            checkbox["initial_options"] = [
-                {
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "Complete"
-                    },
-                    "value": f"item_{item['id']}_{instance_data['instance_id']}"
-                }
-            ]
+            checkbox["initial_options"] = checkbox["options"]
 
         blocks.append({
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"{item['text']}{checked_info}"
+                "text": f"{item.get('text', 'Unnamed item')}{checked_info}"
             },
             "accessory": checkbox
         })
 
-    # Add completion message
-    if instance_data['is_complete'] == 1:
-        blocks.append({
-            "type": "context",
-            "elements": [
-                {
-                    "type": "mrkdwn",
-                    "text": "✅ *All items have been completed!*"
-                }
-            ]
-        })
+    # Add completion message if complete
+    if instance_data.get('is_complete', 0) == 1:
+        time_str = "Time information not available"
+        completed_text = "Completion time not available"
+        
+        try:
+            created_at = instance_data.get('created_at')
+            completed_at = instance_data.get('completed_at', datetime.datetime.now().isoformat())
+            
+            if created_at and completed_at:
+                start = datetime.datetime.fromisoformat(created_at)
+                end = datetime.datetime.fromisoformat(completed_at)
+                delta = end - start
+                
+                hours, remainder = divmod(delta.seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                
+                if delta.days > 0:
+                    time_str = f"{delta.days} days, {hours} hours"
+                elif hours > 0:
+                    time_str = f"{hours} hours, {minutes} minutes"
+                elif minutes > 0:
+                    time_str = f"{minutes} minutes, {seconds} seconds"
+                else:
+                    time_str = f"{seconds} seconds"
+                
+                completed_text = f"Completed: {end.strftime('%b %d, %Y at %I:%M %p')}"
+        except (ValueError, TypeError, AttributeError):
+            pass
+
+        blocks.extend([
+            {
+                "type": "divider"
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"✅ *All items completed!* Time taken: {time_str}"
+                    }
+                ]
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": completed_text
+                    }
+                ]
+            }
+        ])
 
     return blocks
 
-
-def checklist_completion_message(checklist_name):
+def checklist_completion_message(checklist_name, time_taken):
     """Message to send when a checklist is completed"""
     return [
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"✅ *Checklist \"{checklist_name}\" has been completed!*"
+                "text": f"✅ *Checklist \"{checklist_name}\" has been completed in {time_taken}!*"
             }
         }
     ]
-
 
 def list_checklists_blocks(checklists):
     """Display a list of available checklists"""

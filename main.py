@@ -306,7 +306,12 @@ def handle_checklist_command(ack, body, client, say):
 
     channel_id = body["channel_id"]
     workspace_id = utils.get_workspace(body)
-    checklist_name = body["text"].strip()
+    command_text = body["text"].strip()
+
+    # Parse checklist name and mentioned users
+    parts = command_text.split()
+    checklist_name = parts[0] if parts else ""
+    mentioned_users = [part for part in parts[1:] if part.startswith('@')]
 
     if not checklist_name:
         # If no name provided, list all available checklists
@@ -322,7 +327,7 @@ def handle_checklist_command(ack, body, client, say):
         return
 
     # Create the checklist instance before posting
-    instance_id = db.create_checklist_instance(checklist["id"], channel_id, "temp")  # placeholder ts
+    instance_id = db.create_checklist_instance(checklist["id"], channel_id, "temp")
     if not instance_id:
         say("Error creating checklist instance. Please try again.")
         return
@@ -347,6 +352,16 @@ def handle_checklist_command(ack, body, client, say):
             inst.message_ts = message_ts
             session.commit()
 
+        # Notify mentioned users
+        for user in mentioned_users:
+            try:
+                client.chat_postEphemeral(
+                    channel=channel_id,
+                    user=user.strip('@'),
+                    text=f"You've been mentioned in checklist '{checklist_name}'. Check it out in this channel!"
+                )
+            except Exception as e:
+                logging.error(f"Error notifying user {user}: {e}")
 
 
 @app.command("/delete-checklist")
@@ -377,62 +392,125 @@ def handle_item_toggle(ack, body, client):
     """Handle checkbox actions for checklist items"""
     ack()
     
-    # Extract info from the action
-    action_id = body["actions"][0]["action_id"]
-    selected = len(body["actions"][0]["selected_options"]) > 0
-    
-    # Extract item_id and instance_id from the action_id
-    # Format: toggle_item_{item_id}_{instance_id}
-    parts = action_id.split("_")
-    if len(parts) >= 3:
-        item_id = parts[2]
-        instance_id = parts[3] if len(parts) > 3 else None
+    try:
+        # Extract action details
+        action_id = body["actions"][0]["action_id"]
+        selected = len(body["actions"][0]["selected_options"]) > 0
+        parts = action_id.split("_")
         
-        if not instance_id:
-            logging.error(f"No instance_id found in action: {action_id}")
+        if len(parts) < 4:
+            logging.error(f"Invalid action format: {action_id}")
             return
-        
-        # Get user info
+            
+        item_id = parts[2]
+        instance_id = parts[3]
         user_id = body["user"]["id"]
         
         # Update the item status
         result = db.update_checklist_item(int(instance_id), int(item_id), selected, user_id)
-        
-        if result and "all_complete" in result and result["all_complete"]:
-            # If all items are checked, get the updated instance and update the message
-            instance_data = db.get_checklist_instance(result["checklist_instance"])
-            if instance_data:
-                # Update the message with the completed checklist
-                try:
-                    client.chat_update(
-                        channel=body["channel"]["id"],
-                        ts=body["message"]["ts"],
-                        blocks=custom_blocks.render_checklist_instance(instance_data),
-                        text=f"Checklist: {instance_data['name']}"
-                    )
-                    
-                    # Send completion notification
-                    client.chat_postMessage(
-                        channel=body["channel"]["id"],
-                        blocks=custom_blocks.checklist_completion_message(instance_data["name"]),
-                        text=f"Checklist '{instance_data['name']}' completed!"
-                    )
-                except Exception as e:
-                    logging.error(f"Error updating message: {e}")
-        else:
-            # Update the UI to reflect the change
-            instance_data = db.get_checklist_instance(int(instance_id))
-            if instance_data:
-                try:
-                    client.chat_update(
-                        channel=body["channel"]["id"],
-                        ts=body["message"]["ts"],
-                        blocks=custom_blocks.render_checklist_instance(instance_data),
-                        text=f"Checklist: {instance_data['name']}"
-                    )
-                except Exception as e:
-                    logging.error(f"Error updating message: {e}")
+        if not result:
+            logging.error("Failed to update checklist item")
+            return
+            
+        # Get updated instance data
+        instance_data = db.get_checklist_instance(int(instance_id))
+        if not instance_data:
+            logging.error(f"No instance data found for instance_id: {instance_id}")
+            return
 
+        # Format timestamps
+        def format_timestamp(ts):
+            if not ts:
+                return None
+            try:
+                return datetime.datetime.fromisoformat(ts).strftime('%b %d at %I:%M %p')
+            except (ValueError, TypeError):
+                return None
+
+        created_at = format_timestamp(instance_data.get('created_at'))
+        completed_at = format_timestamp(instance_data.get('completed_at'))
+        
+        # Calculate time taken if both timestamps exist
+        time_str = "Time information not available"
+        if instance_data.get('created_at') and instance_data.get('completed_at'):
+            try:
+                start = datetime.datetime.fromisoformat(instance_data['created_at'])
+                end = datetime.datetime.fromisoformat(instance_data['completed_at'])
+                delta = end - start
+                
+                hours, remainder = divmod(delta.seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                
+                if delta.days > 0:
+                    time_str = f"{delta.days} days, {hours} hours"
+                elif hours > 0:
+                    time_str = f"{hours} hours, {minutes} minutes"
+                elif minutes > 0:
+                    time_str = f"{minutes} minutes, {seconds} seconds"
+                else:
+                    time_str = f"{seconds} seconds"
+            except (ValueError, TypeError):
+                pass
+
+        # Update the checklist message
+        client.chat_update(
+            channel=body["channel"]["id"],
+            ts=body["message"]["ts"],
+            blocks=custom_blocks.render_checklist_instance(instance_data),
+            text=f"Checklist: {instance_data.get('name', 'Unnamed Checklist')}"
+        )
+
+        # Send completion message if all items are complete
+        if result.get("all_complete", False):
+            completion_blocks = [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"✅ *Checklist \"{instance_data.get('name', 'Unnamed Checklist')}\" has been completed!*"
+                    }
+                },
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"⏱️ Time taken: {time_str}"
+                        }
+                    ]
+                }
+            ]
+            
+            if created_at:
+                completion_blocks.append({
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"🕒 Started: {created_at}"
+                        }
+                    ]
+                })
+            
+            if completed_at:
+                completion_blocks.append({
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"🏁 Completed: {completed_at}"
+                        }
+                    ]
+                })
+
+            client.chat_postMessage(
+                channel=body["channel"]["id"],
+                blocks=completion_blocks,
+                text=f"Checklist completed in {time_str}!"
+            )
+
+    except Exception as e:
+        logging.error(f"Error in handle_item_toggle: {e}")
 
 @app.view("delete_checklist")
 def handle_delete_checklist_submission(ack, body, client):
