@@ -270,6 +270,17 @@ def handle_create_checklist_shortcut(ack, body, client):
     client.views_open(trigger_id=trigger_id, view=blocks)
 
 
+@app.shortcut("view_checklists")
+def handle_view_checklists_shortcut(ack, body, client):
+    """Global shortcut handler to view all checklists"""
+    ack()
+
+    workspace_id = utils.get_workspace(body)
+    checklists = db.get_all_checklists(workspace_id)
+    modal = custom_blocks.view_checklists_modal(checklists)
+    client.views_open(trigger_id=body["trigger_id"], view=modal)
+
+
 @app.view("create_checklist")
 def handle_create_checklist_submission(ack, body, client):
     """Handle submission of the create checklist modal"""

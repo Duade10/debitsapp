@@ -377,6 +377,58 @@ def create_checklist_modal():
     }
 
 
+def view_checklists_modal(checklists):
+    """Modal for displaying all available checklists"""
+    if not checklists:
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "No checklists found. Create one with `/create-checklist`.",
+                },
+            }
+        ]
+    else:
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "Use `/checklist [name]` in a channel to post it.",
+                },
+            },
+            {"type": "divider"},
+        ]
+
+        for checklist in checklists:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"• `{checklist}`",
+                    },
+                }
+            )
+
+    return {
+        "type": "modal",
+        "callback_id": "view_checklists",
+        "title": {
+            "type": "plain_text",
+            "text": "Checklists",
+            "emoji": true,
+        },
+        "close": {
+            "type": "plain_text",
+            "text": "Close",
+            "emoji": true,
+        },
+        "blocks": blocks,
+    }
+
+
 def delete_checklist_modal(checklists):
     """Modal for deleting an existing checklist"""
     options = [
