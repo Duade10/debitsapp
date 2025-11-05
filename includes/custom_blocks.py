@@ -205,6 +205,7 @@ def user_points_blocks(user_points):
     return blocks
 
 
+
 def add_points_block(pr_amount, amount, cur_amount, user_id, link=None, true=True):
     blocks = [
         {
@@ -671,7 +672,17 @@ def list_checklists_blocks(checklists):
             "text": {
                 "type": "mrkdwn",
                 "text": f"`/checklist {checklist}`"
+            },
+            "accessory": {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": "View",
+                    "emoji": true
+                },
+                "action_id": "view_checklist_button",
+                "value": checklist
             }
         })
-    
+
     return blocks

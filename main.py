@@ -385,6 +385,71 @@ def handle_checklist_command(ack, body, client, say):
                 logging.error(f"Error notifying user {user}: {e}")
 
 
+@app.action("view_checklist_button")
+def handle_view_checklist_button(ack, body, client):
+    """Handle clicks on the view button for checklist listings"""
+    ack()
+
+    checklist_name = body.get("actions", [{}])[0].get("value")
+    channel_id = body.get("channel", {}).get("id")
+    user_id = body.get("user", {}).get("id")
+    workspace_id = utils.get_workspace(body)
+
+    if not all([checklist_name, channel_id, user_id, workspace_id]):
+        logging.error("Missing data in view checklist action payload")
+        return
+
+    checklist = db.get_checklist_by_name(checklist_name, workspace_id)
+    if not checklist:
+        client.chat_postEphemeral(
+            channel=channel_id,
+            user=user_id,
+            text=f"Checklist '{checklist_name}' was not found. It may have been deleted."
+        )
+        return
+
+    instance_id = db.create_checklist_instance(checklist["id"], channel_id, "temp")
+    if not instance_id:
+        client.chat_postEphemeral(
+            channel=channel_id,
+            user=user_id,
+            text="Unable to create checklist instance. Please try again later."
+        )
+        return
+
+    instance_data = db.get_checklist_instance(instance_id)
+    if not instance_data:
+        client.chat_postEphemeral(
+            channel=channel_id,
+            user=user_id,
+            text="Unable to load the checklist. Please try again later."
+        )
+        return
+
+    response = client.chat_postMessage(
+        channel=channel_id,
+        blocks=custom_blocks.render_checklist_instance(instance_data),
+        text=f"Checklist: {checklist_name}"
+    )
+
+    if response.get("ok"):
+        message_ts = response.get("ts")
+        try:
+            with db.Session() as session:
+                instance = session.query(db.ChecklistInstance).filter_by(id=instance_id).first()
+                if instance and message_ts:
+                    instance.message_ts = message_ts
+                    session.commit()
+        except Exception as e:
+            logging.error(f"Error updating checklist instance timestamp: {e}")
+    else:
+        client.chat_postEphemeral(
+            channel=channel_id,
+            user=user_id,
+            text="Failed to post the checklist to the channel."
+        )
+
+
 @app.command("/delete-checklist")
 def handle_delete_checklist_command(ack, body, client):
     """Command handler for /delete-checklist"""
