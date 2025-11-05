@@ -254,7 +254,17 @@ def handle_reset_command(ack, body, respond):
 def handle_create_checklist_command(ack, body, client):
     """Command handler for /create-checklist"""
     ack()
-    
+
+    trigger_id = body["trigger_id"]
+    blocks = custom_blocks.create_checklist_modal()
+    client.views_open(trigger_id=trigger_id, view=blocks)
+
+
+@app.shortcut("open_create_checklist")
+def handle_create_checklist_shortcut(ack, body, client):
+    """Global shortcut handler to open the create checklist modal"""
+    ack()
+
     trigger_id = body["trigger_id"]
     blocks = custom_blocks.create_checklist_modal()
     client.views_open(trigger_id=trigger_id, view=blocks)
