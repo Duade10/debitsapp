@@ -390,40 +390,53 @@ def handle_view_checklist_button(ack, body, client):
     """Handle clicks on the view button for checklist listings"""
     ack()
 
-    checklist_name = body.get("actions", [{}])[0].get("value")
-    channel_id = body.get("channel", {}).get("id")
+    action = body.get("actions", [{}])[0]
+    checklist_name = action.get("value")
     user_id = body.get("user", {}).get("id")
     workspace_id = utils.get_workspace(body)
+    container_type = body.get("container", {}).get("type")
+    channel_id = body.get("channel", {}).get("id")
 
-    if not all([checklist_name, channel_id, user_id, workspace_id]):
-        logging.error("Missing data in view checklist action payload")
+    if not all([checklist_name, user_id, workspace_id]):
+        logging.error("Missing mandatory data in view checklist action payload")
         return
+
+    # When launched from the modal, there is no channel in the payload.
+    # Open a direct message with the user so we can share the checklist instance there.
+    if not channel_id and container_type == "view":
+        try:
+            dm_response = client.conversations_open(users=user_id)
+            channel_id = dm_response.get("channel", {}).get("id")
+        except SlackApiError as e:
+            logging.error(f"Unable to open DM for checklist preview: {e.response['error'] if e.response else e}")
+            return
+
+    if not channel_id:
+        logging.error("Unable to determine a destination channel for the checklist view action")
+        return
+
+    def notify_user(message: str):
+        try:
+            if container_type == "view":
+                client.chat_postMessage(channel=channel_id, text=message)
+            else:
+                client.chat_postEphemeral(channel=channel_id, user=user_id, text=message)
+        except SlackApiError as e:
+            logging.error(f"Failed to notify user about checklist view error: {e.response['error'] if e.response else e}")
 
     checklist = db.get_checklist_by_name(checklist_name, workspace_id)
     if not checklist:
-        client.chat_postEphemeral(
-            channel=channel_id,
-            user=user_id,
-            text=f"Checklist '{checklist_name}' was not found. It may have been deleted."
-        )
+        notify_user(f"Checklist '{checklist_name}' was not found. It may have been deleted.")
         return
 
     instance_id = db.create_checklist_instance(checklist["id"], channel_id, "temp")
     if not instance_id:
-        client.chat_postEphemeral(
-            channel=channel_id,
-            user=user_id,
-            text="Unable to create checklist instance. Please try again later."
-        )
+        notify_user("Unable to create checklist instance. Please try again later.")
         return
 
     instance_data = db.get_checklist_instance(instance_id)
     if not instance_data:
-        client.chat_postEphemeral(
-            channel=channel_id,
-            user=user_id,
-            text="Unable to load the checklist. Please try again later."
-        )
+        notify_user("Unable to load the checklist. Please try again later.")
         return
 
     response = client.chat_postMessage(
@@ -443,11 +456,7 @@ def handle_view_checklist_button(ack, body, client):
         except Exception as e:
             logging.error(f"Error updating checklist instance timestamp: {e}")
     else:
-        client.chat_postEphemeral(
-            channel=channel_id,
-            user=user_id,
-            text="Failed to post the checklist to the channel."
-        )
+        notify_user("Failed to post the checklist to the channel.")
 
 
 @app.command("/delete-checklist")
