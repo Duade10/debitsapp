@@ -410,6 +410,16 @@ def view_checklists_modal(checklists):
                         "type": "mrkdwn",
                         "text": f"• `{checklist}`",
                     },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "View",
+                            "emoji": true,
+                        },
+                        "action_id": "view_checklist_button",
+                        "value": checklist,
+                    },
                 }
             )
 
